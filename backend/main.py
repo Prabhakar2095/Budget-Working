@@ -225,6 +225,9 @@ class RevenueRow(BaseModel):
     # Added breakdown so cashflow can exclude existing one-time component
     monthly_existing_one_time: Dict[str, float] = Field(default_factory=dict)
     monthly_fresh_one_time: Dict[str, float] = Field(default_factory=dict)
+    # Cashflow components: recurring (existing + fresh after offset) and one-time (fresh only, no existing)
+    monthly_cashflow_recurring: Dict[str, float] = Field(default_factory=dict)
+    monthly_cashflow_one_time: Dict[str, float] = Field(default_factory=dict)
     total_recurring: float
     total_one_time: float
     total_revenue: float
@@ -856,28 +859,70 @@ async def revenue_calculate(payload: RevenueCalcPayload):
 
 
 def _handler_small_cell(payload: RevenueCalcPayload) -> RevenueCalcResponse:
-    """Example Small Cell handler.
+    """Small Cell revenue logic handler.
 
-    This demonstrates how a LOB-specific method can tweak the payload (or rates)
-    before calling the shared core logic. Current behaviour preserved by default
-    but pricepoint multipliers (if present in the `rates.dimensions`) are
-    applied to recurring & one-time rates.
+    Small Cell specific behavior:
+    1. Fresh Recurring revenue: Fresh cumulative volume (after offset) * recurring rate
+    2. Existing Recurring revenue: Base exit year volume * recurring rate (no offset)
+    3. Has no one-time revenue (zero)
+    
+    Note: Pricepoint multiplier is always 1 (no rate adjustment needed).
     """
-    # Apply pricepoint multiplier from rate dimensions if present
-    try:
-        for r in payload.rates:
-            pp = r.dimensions.get('pricepoint') if isinstance(r.dimensions, dict) else None
-            if pp:
-                try:
-                    mult = float(pp)
-                    r.recurring_rate = float(r.recurring_rate or 0.0) * mult
-                    r.one_time_rate = float(r.one_time_rate or 0.0) * mult
-                except Exception:
-                    # ignore malformed pricepoint values
-                    pass
-    except Exception:
-        # defensive: if payload shape unexpected, fall back to core
-        return _revenue_calc_core(payload)
+    # Mark this as Small Cell for custom revenue logic in core
+    payload.lob = 'Small Cell'
+    return _revenue_calc_core(payload)
+
+
+def _handler_active(payload: RevenueCalcPayload) -> RevenueCalcResponse:
+    """Active revenue logic handler.
+
+    Active has the same behavior as Small Cell:
+    1. Fresh Recurring revenue: Fresh cumulative volume (after offset) * recurring rate
+    2. Existing Recurring revenue: Base exit year volume * recurring rate (no offset)
+    3. Has no one-time revenue (zero)
+    """
+    payload.lob = 'Active'
+    return _revenue_calc_core(payload)
+
+
+def _handler_sdu(payload: RevenueCalcPayload) -> RevenueCalcResponse:
+    """SDU revenue logic handler.
+
+    SDU currently uses the standard revenue logic (offset-aware) without
+    additional multipliers or overrides. Dimensions for SDU (customer, circle,
+    lock-in, type) are assumed to be provided by the UI, so this handler simply
+    marks the LOB and delegates to the core calculator.
+    """
+    payload.lob = 'SDU'
+    return _revenue_calc_core(payload)
+
+
+def _handler_ohfc(payload: RevenueCalcPayload) -> RevenueCalcResponse:
+    """OHFC revenue logic handler.
+
+    OHFC specific behavior:
+    1. Fresh Recurring (P&L/cashflow): cumulative fresh volume (after offset) * recurring rate
+    2. Fresh One-Time P&L: cumulative fresh volume (after offset) * one_time_rate / 12
+    3. Fresh One-Time Cashflow: fresh volume (non-cumulative, after offset) * one_time_rate
+    4. Existing Recurring: base exit volume * recurring rate
+    5. Existing One-Time (P&L and Cashflow): zero
+    """
+    payload.lob = 'OHFC'
+    return _revenue_calc_core(payload)
+
+
+def _handler_dark_fiber(payload: RevenueCalcPayload) -> RevenueCalcResponse:
+    """Dark Fiber revenue logic handler.
+
+    Dark Fiber specific behavior:
+    1. Fresh Recurring revenue: Fresh cumulative volume (after offset) * recurring rate
+    2. Existing Recurring revenue: Base exit year volume * recurring rate (no offset)
+    3. Fresh One-Time: cumulative fresh volume (after offset) * one_time_rate / 180
+    4. Existing One-Time: base exit volume * one_time_rate / 180
+    
+    Dark Fiber uses the standard division factor of 180 for one-time revenue spread over fiscal year.
+    """
+    payload.lob = 'Dark Fiber'
     return _revenue_calc_core(payload)
 
 
@@ -931,14 +976,32 @@ def _revenue_calc_core(payload: RevenueCalcPayload) -> RevenueCalcResponse:
     vol_map: Dict[str, Dict[str,float]] = {}
     offset_map: Dict[str, int | None] = {}
     cashflow_offset_map: Dict[str, int] = {}
+    # Track combos that represent decommissioning so we can invert exit volumes (E)
+    decom_map: Dict[str, bool] = {}
     for combo in payload.volumes:
         fy_months = combo.volumes.get(fy, {})
         key = _dim_key(combo.dimensions)
-        vol_map[key] = {m: float(fy_months.get(m,0) or 0) for m in months}
-        offset_map[key] = getattr(combo, 'fresh_offset_months', None)
+        # Treat combinations whose `type` dimension equals 'Decom' (case-insensitive)
+        is_decom = False
+        try:
+            is_decom = str(combo.dimensions.get('type','')).strip().lower() == 'decom'
+        except Exception:
+            is_decom = False
+        decom_map[key] = is_decom
+        # If decom, negate monthly volumes so downstream calculations treat them as reductions
+        vol_map[key] = {m: (-(float(fy_months.get(m,0) or 0)) if is_decom else float(fy_months.get(m,0) or 0)) for m in months}
+        # Store fresh offset - handle both int and string inputs
+        combo_fresh_offset = getattr(combo, 'fresh_offset_months', None)
+        if combo_fresh_offset is not None:
+            try:
+                combo_fresh_offset = int(combo_fresh_offset)
+            except (ValueError, TypeError):
+                combo_fresh_offset = None
+        offset_map[key] = combo_fresh_offset
+        if combo_fresh_offset is not None and combo_fresh_offset > 0:
+            print(f"[OFFSET] {key}: fresh_offset_months={combo_fresh_offset}")
         cf_off = getattr(combo, 'cashflow_offset_months', 0) or 0
         cashflow_offset_map[key] = max(int(cf_off), 0)
-    # Build rate map
     rate_map: Dict[str, RateEntry] = {}
     for r in payload.rates:
         rate_map[_dim_key(r.dimensions)] = r
@@ -950,6 +1013,7 @@ def _revenue_calc_core(payload: RevenueCalcPayload) -> RevenueCalcResponse:
     grand_total = 0.0
     DEN = 180.0
     DECIMALS = 2  # rounding precision for all monetary outputs
+    
     for key, month_vols in vol_map.items():
         r = rate_map.get(key, RateEntry(dimensions={}, recurring_rate=0, one_time_rate=0))
         FR = r.recurring_rate if r else 0.0
@@ -967,6 +1031,9 @@ def _revenue_calc_core(payload: RevenueCalcPayload) -> RevenueCalcResponse:
         E = 0.0
         if payload.base_exit_year and combo_obj:
             E = float(combo_obj.exit_volumes.get(payload.base_exit_year, 0) or 0)
+            # If this combination is a decommissioning entry, treat the base exit volume as negative
+            if decom_map.get(key):
+                E = -E
         existing_override_rec: Dict[str, float] | None = None
         existing_override_ot: Dict[str, float] | None = None
         if payload.base_exit_year and combo_obj and combo_obj.existing_revenue:
@@ -982,12 +1049,50 @@ def _revenue_calc_core(payload: RevenueCalcPayload) -> RevenueCalcResponse:
             running += v
             cum_raw.append(running)
         combo_offset = offset_map.get(key)
-        offset = int(combo_offset) if (combo_offset is not None and combo_offset >= 0) else max(int(getattr(payload, 'fresh_offset_months', 0) or 0), 0)
+        # Coerce combo_offset to an integer safely (handle strings like '02')
+        parsed_combo_offset = None
+        try:
+            if combo_offset is not None:
+                parsed_combo_offset = int(combo_offset)
+                if parsed_combo_offset < 0:
+                    parsed_combo_offset = None
+        except (ValueError, TypeError):
+            parsed_combo_offset = None
+        # Use combo-specific offset if available, otherwise fall back to payload-level offset
+        # Offset applies to all LOBs
+        offset = parsed_combo_offset if parsed_combo_offset is not None else max(int(getattr(payload, 'fresh_offset_months', 0) or 0), 0)
+        
+        if offset > 0:
+            print(f"[CALC] key={key}, using offset={offset}, include_fresh={include_fresh}, FR={FR}, FO={FO}")
+        
+        # Check LOB flags for custom logic
+        lob_name = (getattr(payload, 'lob', 'FTTH') or 'FTTH').upper()
+        is_small_cell = lob_name == 'SMALL CELL'
+        is_sdu = lob_name == 'SDU'
+        is_ohfc = lob_name == 'OHFC'
+        is_active = lob_name == 'ACTIVE'
+
+        # Extract lock-in (months) for SDU; default to 1 to avoid divide-by-zero
+        lock_in_val = 1.0
+        if is_sdu and combo_obj and isinstance(combo_obj.dimensions, dict):
+            for k, v in combo_obj.dimensions.items():
+                try:
+                    key_norm = str(k).lower().replace('-', ' ').replace('_', ' ').strip()
+                    if key_norm in ['lock in', 'lockin']:
+                        lv = float(v)
+                        if lv > 0:
+                            lock_in_val = lv
+                        break
+                except Exception:
+                    continue
+        
         monthly_rev: Dict[str, float] = {}
         monthly_rec: Dict[str, float] = {}
         monthly_ot: Dict[str, float] = {}
         monthly_existing_ot_map: Dict[str, float] = {}
         monthly_fresh_ot_map: Dict[str, float] = {}
+        monthly_cashflow_rec_map: Dict[str, float] = {}
+        monthly_cashflow_ot_map: Dict[str, float] = {}
         existing_recurring_total = 0.0
         fresh_recurring_total = 0.0
         existing_one_time_total = 0.0
@@ -995,57 +1100,207 @@ def _revenue_calc_core(payload: RevenueCalcPayload) -> RevenueCalcResponse:
         total_recurring = 0.0
         total_one_time = 0.0
 
+        # Track whether we've recognized one-time revenue for this combination
+        # This ensures one-time is recognized only once, accounting for offset
+        one_time_recognized = False
+        
+        # Note: existing one-time has NO cashflow component
+        existing_ot_total_amount = 0.0
+        
         for idx, m in enumerate(months):
             if existing_override_rec is not None and existing_override_ot is not None:
                 existing_rec_m = existing_override_rec.get(m, 0.0)
                 existing_ot_m = existing_override_ot.get(m, 0.0)
             else:
+                # Existing recurring: base exit volume * recurring rate (no offset, constant monthly)
                 existing_rec_m = E * ER
-                existing_ot_m = (E * EO) / DEN if EO else 0.0
+                # Existing one-time:
+                # - Small Cell: zero
+                # - Active: zero
+                # - OHFC: zero
+                # - SDU: base exit volume * one-time rate / (lock_in * 12)
+                # - Others: base exit volume * one-time rate / 180
+                if is_small_cell or is_active or is_ohfc:
+                    existing_ot_m = 0.0
+                elif is_sdu:
+                    denom = (lock_in_val * 12.0) if lock_in_val > 0 else 12.0
+                    existing_ot_m = (E * EO / denom) if EO else 0.0
+                else:
+                    existing_ot_m = (E * EO / DEN) if EO else 0.0
+            
             eff_cum = 0.0
+            prev_eff_cum = 0.0
+            fresh_vol_month = 0.0  # Non-cumulative fresh volume for this month
+            
             if include_fresh:
-                eff_cum = cum_raw[idx - offset] if (idx - offset) >= 0 else 0.0
-            # Support optional per-payload formulas to allow LOB-specific calculation methods.
-            # If provided, formula_recurring should evaluate to the monthly recurring amount
-            # (can use variables: volume, recurring_rate). formula_one_time should evaluate
-            # to the monthly one-time amount (variables: total_volume_year, one_time_rate, volume).
-            if getattr(payload, 'formula_recurring', None):
-                try:
-                    fresh_rec_m = _safe_eval(payload.formula_recurring, {'volume': eff_cum, 'recurring_rate': FR}) if include_fresh else 0.0
-                except HTTPException:
-                    # propagate formula errors
-                    raise
-                except Exception:
-                    fresh_rec_m = eff_cum * FR if include_fresh else 0.0
-            else:
-                fresh_rec_m = eff_cum * FR if include_fresh else 0.0
+                # Only use cumulative volume if we're past the offset point
+                # idx >= offset means month index is >= offset, so we can safely access cum_raw[idx - offset]
+                if idx >= offset and len(cum_raw) > (idx - offset):
+                    eff_cum = cum_raw[idx - offset]
+                    # Get non-cumulative fresh volume for this month
+                    if idx == offset:
+                        # First month after offset: use cumulative volume directly
+                        fresh_vol_month = eff_cum
+                    else:
+                        # Subsequent months: diff from previous cumulative
+                        prev_cum = cum_raw[(idx - 1) - offset] if len(cum_raw) > ((idx - 1) - offset) else 0.0
+                        fresh_vol_month = eff_cum - prev_cum
+                    if offset > 0 and idx < 4:
+                        print(f"[LOOP] month {idx}({m}): idx({idx}) >= offset({offset}), eff_cum={eff_cum}, fresh_vol_month={fresh_vol_month}")
+                else:
+                    eff_cum = 0.0
+                    fresh_vol_month = 0.0
+                    if offset > 0 and idx < 4:
+                        print(f"[LOOP] month {idx}({m}): idx({idx}) < offset({offset}), eff_cum=0")
+                # Track previous month's effective cumulative for one-time recognition (first arrival only)
+                if idx > 0 and (idx - 1) >= offset and len(cum_raw) > ((idx - 1) - offset):
+                    prev_eff_cum = cum_raw[(idx - 1) - offset]
+                else:
+                    prev_eff_cum = 0.0
+                if offset > 0 and idx < 4:
+                    print(f"[PREV] month {idx}({m}): prev_eff_cum={prev_eff_cum}")
+            
+            # Fresh Recurring (P&L): cumulative fresh volume (after offset) * recurring rate
+            # SDU: Staggered recognition - half immediate, half delayed by 2 months
+            # Others: cumulative fresh volume (after offset) * recurring rate
+            fresh_rec_m = 0.0
+            if include_fresh and idx >= offset and eff_cum > 0:
+                if is_sdu:
+                    # SDU: First tranche (immediate half) + Second tranche (delayed 2 months half)
+                    # First tranche: current cumulative / 2 * rate
+                    first_tranche = (eff_cum / 2.0) * FR
+                    # Second tranche: cumulative from 2 months ago / 2 * rate
+                    second_tranche = 0.0
+                    if idx >= offset + 2 and len(cum_raw) > ((idx - 2) - offset):
+                        cum_2_months_ago = cum_raw[(idx - 2) - offset]
+                        second_tranche = (cum_2_months_ago / 2.0) * FR
+                    fresh_rec_m = first_tranche + second_tranche
+                else:
+                    if getattr(payload, 'formula_recurring', None):
+                        try:
+                            fresh_rec_m = _safe_eval(payload.formula_recurring, {'volume': eff_cum, 'recurring_rate': FR}) if FR else 0.0
+                        except HTTPException:
+                            raise
+                        except Exception:
+                            fresh_rec_m = eff_cum * FR
+                    else:
+                        fresh_rec_m = eff_cum * FR
 
-            if getattr(payload, 'formula_one_time', None):
-                try:
-                    total_volume_year = cum_raw[-1] if len(cum_raw) > 0 else 0.0
-                    fresh_ot_m = _safe_eval(payload.formula_one_time, {'total_volume_year': total_volume_year, 'one_time_rate': FO, 'volume': eff_cum}) if include_fresh else 0.0
-                except HTTPException:
-                    raise
-                except Exception:
-                    fresh_ot_m = (eff_cum * FO) / DEN if (include_fresh and FO) else 0.0
+            # Fresh One-Time (P&L):
+            # - Small Cell: always zero
+            # - Active: always zero
+            # - OHFC: cumulative fresh volume (after offset) * one-time rate / 12
+            # - SDU: cumulative fresh volume (after offset) * one-time rate / (lock_in * 12)
+            # - Others: cumulative fresh volume (after offset) * one-time rate / 180
+            pl_ot_m_fresh = 0.0
+            if not is_small_cell and not is_active and include_fresh and idx >= offset and eff_cum > 0 and FO:
+                if is_ohfc:
+                    # OHFC: divide by 12
+                    if getattr(payload, 'formula_one_time', None):
+                        try:
+                            yearly_ot_fresh = _safe_eval(payload.formula_one_time, {'total_volume_year': eff_cum, 'one_time_rate': FO, 'volume': eff_cum}) if FO else 0.0
+                            pl_ot_m_fresh = (yearly_ot_fresh / 12.0) if yearly_ot_fresh else 0.0
+                        except HTTPException:
+                            raise
+                        except Exception:
+                            pl_ot_m_fresh = (eff_cum * FO / 12.0)
+                    else:
+                        pl_ot_m_fresh = (eff_cum * FO / 12.0)
+                elif is_sdu:
+                    denom = (lock_in_val * 12.0) if lock_in_val > 0 else 12.0
+                    if getattr(payload, 'formula_one_time', None):
+                        try:
+                            yearly_ot_fresh = _safe_eval(payload.formula_one_time, {'total_volume_year': eff_cum, 'one_time_rate': FO, 'volume': eff_cum}) if FO else 0.0
+                            pl_ot_m_fresh = (yearly_ot_fresh / denom) if yearly_ot_fresh else 0.0
+                        except HTTPException:
+                            raise
+                        except Exception:
+                            pl_ot_m_fresh = (eff_cum * FO / denom)
+                    else:
+                        pl_ot_m_fresh = (eff_cum * FO / denom)
+                else:
+                    if getattr(payload, 'formula_one_time', None):
+                        try:
+                            yearly_ot_fresh = _safe_eval(payload.formula_one_time, {'total_volume_year': eff_cum, 'one_time_rate': FO, 'volume': eff_cum}) if FO else 0.0
+                            pl_ot_m_fresh = yearly_ot_fresh / DEN if yearly_ot_fresh else 0.0
+                        except HTTPException:
+                            raise
+                        except Exception:
+                            pl_ot_m_fresh = (eff_cum * FO / DEN)
+                    else:
+                        pl_ot_m_fresh = (eff_cum * FO / DEN)
+            
+            # For P&L: existing override completely overrides any calculations
+            if existing_override_rec is not None and existing_override_ot is not None:
+                # If we have override values, use them as-is (already spread across months)
+                existing_ot_m_adjusted = existing_ot_m
+                fresh_ot_m = pl_ot_m_fresh
             else:
-                fresh_ot_m = (eff_cum * FO) / DEN if (include_fresh and FO) else 0.0
+                # Use calculated values
+                existing_ot_m_adjusted = existing_ot_m
+                fresh_ot_m = pl_ot_m_fresh
+            
+            # ===== CASHFLOW CALCULATIONS (ALL LOBS) =====
+            # Offset-aware cashflow calculations apply to all LOBs
+            # Existing Recurring Cashflow: base exit volume * recurring rate (after offset month)
+            cashflow_existing_rec_m = 0.0
+            if idx >= offset:
+                cashflow_existing_rec_m = E * ER
+            
+            # Existing One-Time Cashflow: $0 (NO existing one-time cashflow)
+            cashflow_existing_ot_m = 0.0
+            
+            # Fresh Recurring Cashflow: cumulative fresh volume * recurring rate (after offset)
+            cashflow_fresh_rec_m = 0.0
+            if include_fresh and eff_cum > 0 and idx >= offset:
+                if getattr(payload, 'formula_recurring', None):
+                    try:
+                        cashflow_fresh_rec_m = _safe_eval(payload.formula_recurring, {'volume': eff_cum, 'recurring_rate': FR}) if FR else 0.0
+                    except:
+                        cashflow_fresh_rec_m = eff_cum * FR if FR else 0.0
+                else:
+                    cashflow_fresh_rec_m = eff_cum * FR if FR else 0.0
+            
+            # Fresh One-Time Cashflow: fresh volume (non-cumulative) * one-time rate (after offset, no division)
+            # For Small Cell and Active, this is always zero
+            cashflow_fresh_ot_m = 0.0
+            if not is_small_cell and not is_active and include_fresh and fresh_vol_month > 0 and FO and idx >= offset:
+                if getattr(payload, 'formula_one_time', None):
+                    try:
+                        cashflow_fresh_ot_m = _safe_eval(payload.formula_one_time, {'total_volume_year': fresh_vol_month, 'one_time_rate': FO, 'volume': fresh_vol_month}) if FO else 0.0
+                    except:
+                        cashflow_fresh_ot_m = fresh_vol_month * FO if FO else 0.0
+                else:
+                    cashflow_fresh_ot_m = fresh_vol_month * FO if FO else 0.0
+            
+            cashflow_ot_m = cashflow_existing_ot_m + cashflow_fresh_ot_m
+            cashflow_rec_m = cashflow_existing_rec_m + cashflow_fresh_rec_m
 
             rec_m = existing_rec_m + fresh_rec_m
-            ot_m = existing_ot_m + fresh_ot_m
+            ot_m = existing_ot_m_adjusted + fresh_ot_m
+            if offset > 0 and idx < 4:
+                print(f"[REV] month {idx}({m}): existing_ot_m={existing_ot_m_adjusted}, fresh_ot_m={fresh_ot_m}, ot_m={ot_m}, cf_rec={cashflow_rec_m}, cf_ot={cashflow_ot_m}")
             # Round per month components before aggregation so row totals equal sum of displayed months
             rec_m_r = round(rec_m, DECIMALS)
             ot_m_r = round(ot_m, DECIMALS)
             total_m_r = round(rec_m_r + ot_m_r, DECIMALS)
+            cashflow_rec_m_r = round(cashflow_rec_m, DECIMALS)
+            cashflow_ot_m_r = round(cashflow_ot_m, DECIMALS)
+            cashflow_total_m_r = round(cashflow_rec_m_r + cashflow_ot_m_r, DECIMALS)
+            
             monthly_rec[m] = rec_m_r
             monthly_ot[m] = ot_m_r
             monthly_rev[m] = total_m_r
             # Store component splits for one-time
-            monthly_existing_ot_map[m] = round(existing_ot_m, DECIMALS)
+            monthly_existing_ot_map[m] = round(existing_ot_m_adjusted, DECIMALS)
             monthly_fresh_ot_map[m] = round(fresh_ot_m, DECIMALS)
+            # Store cashflow components
+            monthly_cashflow_rec_map[m] = cashflow_rec_m_r
+            monthly_cashflow_ot_map[m] = cashflow_ot_m_r
+            
             existing_recurring_total += existing_rec_m
             fresh_recurring_total += fresh_rec_m
-            existing_one_time_total += existing_ot_m
+            existing_one_time_total += existing_ot_m_adjusted
             fresh_one_time_total += fresh_ot_m
             total_recurring += rec_m_r
             total_one_time += ot_m_r
@@ -1071,6 +1326,8 @@ def _revenue_calc_core(payload: RevenueCalcPayload) -> RevenueCalcResponse:
             monthly_one_time=monthly_ot,
             monthly_existing_one_time=monthly_existing_ot_map,
             monthly_fresh_one_time=monthly_fresh_ot_map,
+            monthly_cashflow_recurring=monthly_cashflow_rec_map,
+            monthly_cashflow_one_time=monthly_cashflow_ot_map,
             total_recurring=total_recurring,
             total_one_time=total_one_time,
             total_revenue=row_total,
@@ -1140,6 +1397,9 @@ def _revenue_calc_core(payload: RevenueCalcPayload) -> RevenueCalcResponse:
             E = 0.0
             if payload.base_exit_year:
                 E = float(combo.exit_volumes.get(payload.base_exit_year, 0) or 0)
+                # Decom combos reduce base exit volume
+                if decom_map.get(key):
+                    E = -E
             fy_months = combo.volumes.get(fy, {})
             raw_vols = [float(fy_months.get(m,0) or 0) for m in months]
             cum_raw = []
@@ -1152,7 +1412,11 @@ def _revenue_calc_core(payload: RevenueCalcPayload) -> RevenueCalcResponse:
             for idx, m in enumerate(months):
                 eff_cum = 0.0
                 if include_fresh:
-                    eff_cum = cum_raw[idx - item_offset] if (idx - item_offset) >= 0 else 0.0
+                    # Apply the same offset logic as revenue: check bounds before accessing
+                    if idx >= item_offset and len(cum_raw) > (idx - item_offset):
+                        eff_cum = cum_raw[idx - item_offset]
+                    else:
+                        eff_cum = 0.0
                 existing_part = 0.0 if has_override else (E * existing_rate)
                 fresh_part = eff_cum * fresh_rate if include_fresh else 0.0
                 val = existing_part + fresh_part
@@ -1194,9 +1458,10 @@ def _revenue_calc_core(payload: RevenueCalcPayload) -> RevenueCalcResponse:
                 continue  # discard spillover
             tm = months[target_idx]
             cash_recurring[tm] += row.monthly_recurring[m]
-            # Only fresh one-time flows to cash; exclude existing component
-            fresh_ot_component = row.monthly_fresh_one_time.get(m) if hasattr(row, 'monthly_fresh_one_time') else (row.monthly_one_time[m] - row.monthly_existing_one_time.get(m,0))
-            cash_one_time[tm] += fresh_ot_component
+            # For one-time cashflow: use the true one-time amount (monthly_cashflow_one_time)
+            # which is already volume * rate (not spread by 180)
+            cashflow_ot_component = row.monthly_cashflow_one_time.get(m, 0) if hasattr(row, 'monthly_cashflow_one_time') else 0
+            cash_one_time[tm] += cashflow_ot_component
     # Opex shifting per combination & item
     for item_name, combo_map in combo_item_pl.items():
         base_item_cf_off = item_cashflow_offset_map.get(item_name, 0)
@@ -1284,12 +1549,19 @@ def _revenue_calc_core(payload: RevenueCalcPayload) -> RevenueCalcResponse:
             E = 0.0
             if itype == 'replacement' and payload.base_exit_year:
                 E = float(combo.exit_volumes.get(payload.base_exit_year, 0) or 0)
+                # If this combo represents decommissioning, invert the exit base
+                if decom_map.get(key):
+                    E = -E
             combo_store = capex_combo_recog.setdefault(iname, {}).setdefault(key, {m:0.0 for m in months})
             for midx, m in enumerate(months):
                 existing_part = 0.0
                 if itype == 'replacement':
                     existing_part = (override_months.get(m,0.0) if override_months is not None else (E * existing_rate))
-                eff_cum = cum_raw[midx - eff_recog_off] if (midx - eff_recog_off) >= 0 else 0.0
+                # Safe offset logic: only access if index is valid
+                if midx >= eff_recog_off and len(cum_raw) > (midx - eff_recog_off):
+                    eff_cum = cum_raw[midx - eff_recog_off]
+                else:
+                    eff_cum = 0.0
                 fresh_part = 0.0
                 if itype in ('first_time','replacement','people'):
                     fresh_part = eff_cum * fresh_rate
@@ -1411,7 +1683,10 @@ def _revenue_calc_core(payload: RevenueCalcPayload) -> RevenueCalcResponse:
 LOB_HANDLERS = {
     'FTTH': _revenue_calc_core,
     'Small Cell': _handler_small_cell,
-    # Add other lob-specific handlers here, e.g. 'SDU': _handler_sdu
+    'Active': _handler_active,
+    'SDU': _handler_sdu,
+    'OHFC': _handler_ohfc,
+    'Dark Fiber': _handler_dark_fiber,
 }
 
 

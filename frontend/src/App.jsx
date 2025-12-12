@@ -271,7 +271,8 @@ function VolumeDesignFlow() {
   // Rates state
   const [rates, setRates] = useState({}); // key -> {recurring_rate, one_time_rate}
   const [formulaRecurring, setFormulaRecurring] = useState('volume * recurring_rate');
-  const [formulaOneTime, setFormulaOneTime] = useState('total_volume_year * one_time_rate');
+  // Leave formulaOneTime empty by default so backend uses its built-in spread logic
+  const [formulaOneTime, setFormulaOneTime] = useState('');
   const [baseExitYear, setBaseExitYear] = useState('');
   // Removed global freshOffsetMonths; now per-combination fresh_offset_months
   const [includeFresh, setIncludeFresh] = useState(true); // Option B: ON means include fresh volumes
@@ -459,10 +460,11 @@ function VolumeDesignFlow() {
             exit_volumes: c.exit_volumes,
             existing_revenue: c.existing_revenue || {},
             included:true,
-            fresh_offset_months: c.fresh_offset_months || 0,
-            cashflow_offset_months: c.cashflow_offset_months || 0,
-            capex_offset_months: c.capex_offset_months || 0,
-            capex_cashflow_offset_months: c.capex_cashflow_offset_months || 0
+            // Ensure offsets are numeric (coerce strings like '02' -> 2)
+            fresh_offset_months: Number(c.fresh_offset_months) || 0,
+            cashflow_offset_months: Number(c.cashflow_offset_months) || 0,
+            capex_offset_months: Number(c.capex_offset_months) || 0,
+            capex_cashflow_offset_months: Number(c.capex_cashflow_offset_months) || 0
           }));
           const ratePayload = included.map(c=> {
             const key = Object.values(c.dimensions).join('|');
@@ -495,6 +497,8 @@ function VolumeDesignFlow() {
           const body = { lob, fiscal_year: fiscalYear, volumes: volumePayload, rates: ratePayload, formula_recurring: formulaRecurring || null, formula_one_time: formulaOneTime || null, base_exit_year: baseExitYear || null, include_fresh_volumes: includeFresh, opex_items: opexItems, opex_rates: opexRatesPayload, capex_items: capexItems, capex_rates: capexRatesPayload };
           if(existingOpexOverridesArr.length) body.existing_opex_overrides = existingOpexOverridesArr;
           if(existingCapexOverridesArr.length) body.existing_capex_overrides = existingCapexOverridesArr;
+          console.log('Revenue calculation payload:', body);
+          console.log('Volume payload offsets:', volumePayload.map(v => ({ dims: v.dimensions, fresh_offset: v.fresh_offset_months })));
           const resp = await fetch('/api/revenue/calculate', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)});
           if(!resp.ok) {
             let errorMsg = 'Revenue API error';
