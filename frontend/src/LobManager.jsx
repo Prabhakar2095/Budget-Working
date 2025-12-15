@@ -22,6 +22,8 @@ function LobManager({ setLob, setFeedback }) {
           <option value='Dark Fiber'>Dark Fiber</option>
           <option value='OHFC'>OHFC</option>
           <option value='Active'>Active</option>
+          <option value='Co Build'>Co Build</option>
+          <option value='Active'>Active</option>
         </select>
       </label>
       <button style={{ marginLeft: 16 }} onClick={handleSelect}>Confirm</button>

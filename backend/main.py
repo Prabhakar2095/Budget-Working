@@ -1,7 +1,7 @@
 # OPEX item model for validation
 from fastapi import FastAPI, UploadFile, File, HTTPException, Body, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 import os
@@ -151,33 +151,33 @@ async def update_opex_item(name: str, item: OpexItem):
 
 capex_items = [
     # First Time Inventory
-    {"name": "Battery, SMPS & Cabinet - First Time", "group": "First Time Inventory", "type": "first_time", "recognition_offset_months": 0, "cashflow_offset_months": 0, "is_refund": False},
-    {"name": "Pole - First Time", "group": "First Time Inventory", "type": "first_time", "recognition_offset_months": 0, "cashflow_offset_months": 0, "is_refund": False},
-    {"name": "Fiber - First Time", "group": "First Time Inventory", "type": "first_time", "recognition_offset_months": 0, "cashflow_offset_months": 0, "is_refund": False},
-    {"name": "Antenna - First Time", "group": "First Time Inventory", "type": "first_time", "recognition_offset_months": 0, "cashflow_offset_months": 0, "is_refund": False},
-    {"name": "Others - First Time", "group": "First Time Inventory", "type": "first_time", "recognition_offset_months": 0, "cashflow_offset_months": 0, "is_refund": False},
+    {"name": "Battery, SMPS & Cabinet - First Time", "group": "First Time Inventory", "type": "first_time", "cashflow_offset_months": 0, "is_refund": False},
+    {"name": "Pole - First Time", "group": "First Time Inventory", "type": "first_time", "cashflow_offset_months": 0, "is_refund": False},
+    {"name": "Fiber - First Time", "group": "First Time Inventory", "type": "first_time", "cashflow_offset_months": 0, "is_refund": False},
+    {"name": "Antenna - First Time", "group": "First Time Inventory", "type": "first_time", "cashflow_offset_months": 0, "is_refund": False},
+    {"name": "Others - First Time", "group": "First Time Inventory", "type": "first_time", "cashflow_offset_months": 0, "is_refund": False},
     # First Time Capex
-    {"name": "Acquisition - First Time", "group": "First Time Capex", "type": "first_time", "recognition_offset_months": 0, "cashflow_offset_months": 0, "is_refund": False},
-    {"name": "IBD - First Time", "group": "First Time Capex", "type": "first_time", "recognition_offset_months": 0, "cashflow_offset_months": 0, "is_refund": False},
-    {"name": "MC & EB Permission - First Time", "group": "First Time Capex", "type": "first_time", "recognition_offset_months": 0, "cashflow_offset_months": 0, "is_refund": False},
-    {"name": "Other Services - First Time", "group": "First Time Capex", "type": "first_time", "recognition_offset_months": 0, "cashflow_offset_months": 0, "is_refund": False},
+    {"name": "Acquisition - First Time", "group": "First Time Capex", "type": "first_time", "cashflow_offset_months": 0, "is_refund": False},
+    {"name": "IBD - First Time", "group": "First Time Capex", "type": "first_time", "cashflow_offset_months": 0, "is_refund": False},
+    {"name": "MC & EB Permission - First Time", "group": "First Time Capex", "type": "first_time", "cashflow_offset_months": 0, "is_refund": False},
+    {"name": "Other Services - First Time", "group": "First Time Capex", "type": "first_time", "cashflow_offset_months": 0, "is_refund": False},
     # Capex People
-    {"name": "Capex People", "group": "Capex People", "type": "people", "recognition_offset_months": 0, "cashflow_offset_months": 0, "is_refund": False},
+    {"name": "Capex People", "group": "Capex People", "type": "people", "cashflow_offset_months": 0, "is_refund": False},
     # Replacement Inventory
-    {"name": "Battery, SMPS & Cabinet - Replacement", "group": "Replacement Inventory", "type": "replacement", "recognition_offset_months": 0, "cashflow_offset_months": 0, "is_refund": False},
-    {"name": "Pole - Replacement", "group": "Replacement Inventory", "type": "replacement", "recognition_offset_months": 0, "cashflow_offset_months": 0, "is_refund": False},
-    {"name": "Fiber - Replacement", "group": "Replacement Inventory", "type": "replacement", "recognition_offset_months": 0, "cashflow_offset_months": 0, "is_refund": False},
-    {"name": "Antenna - Replacement", "group": "Replacement Inventory", "type": "replacement", "recognition_offset_months": 0, "cashflow_offset_months": 0, "is_refund": False},
-    {"name": "Others - Replacement", "group": "Replacement Inventory", "type": "replacement", "recognition_offset_months": 0, "cashflow_offset_months": 0, "is_refund": False},
+    {"name": "Battery, SMPS & Cabinet - Replacement", "group": "Replacement Inventory", "type": "replacement", "cashflow_offset_months": 0, "is_refund": False},
+    {"name": "Pole - Replacement", "group": "Replacement Inventory", "type": "replacement", "cashflow_offset_months": 0, "is_refund": False},
+    {"name": "Fiber - Replacement", "group": "Replacement Inventory", "type": "replacement", "cashflow_offset_months": 0, "is_refund": False},
+    {"name": "Antenna - Replacement", "group": "Replacement Inventory", "type": "replacement", "cashflow_offset_months": 0, "is_refund": False},
+    {"name": "Others - Replacement", "group": "Replacement Inventory", "type": "replacement", "cashflow_offset_months": 0, "is_refund": False},
     # Replacement Capex
-    {"name": "Acquisition - Replacement", "group": "Replacement Capex", "type": "replacement", "recognition_offset_months": 0, "cashflow_offset_months": 0, "is_refund": False},
-    {"name": "IBD - Replacement", "group": "Replacement Capex", "type": "replacement", "recognition_offset_months": 0, "cashflow_offset_months": 0, "is_refund": False},
-    {"name": "MC & EB Permission - Replacement", "group": "Replacement Capex", "type": "replacement", "recognition_offset_months": 0, "cashflow_offset_months": 0, "is_refund": False},
-    {"name": "Other Services - Replacement", "group": "Replacement Capex", "type": "replacement", "recognition_offset_months": 0, "cashflow_offset_months": 0, "is_refund": False},
+    {"name": "Acquisition - Replacement", "group": "Replacement Capex", "type": "replacement", "cashflow_offset_months": 0, "is_refund": False},
+    {"name": "IBD - Replacement", "group": "Replacement Capex", "type": "replacement", "cashflow_offset_months": 0, "is_refund": False},
+    {"name": "MC & EB Permission - Replacement", "group": "Replacement Capex", "type": "replacement", "cashflow_offset_months": 0, "is_refund": False},
+    {"name": "Other Services - Replacement", "group": "Replacement Capex", "type": "replacement", "cashflow_offset_months": 0, "is_refund": False},
     # ROW Deposit
-    {"name": "ROW Deposit", "group": "ROW Deposit", "type": "deposit", "recognition_offset_months": 0, "cashflow_offset_months": 0, "is_refund": False},
+    {"name": "ROW Deposit", "group": "ROW Deposit", "type": "deposit", "cashflow_offset_months": 0, "is_refund": False},
     # Deposit Refund
-    {"name": "Deposit Refund", "group": "Deposit Refund", "type": "deposit_refund", "recognition_offset_months": 0, "cashflow_offset_months": 0, "is_refund": True},
+    {"name": "Deposit Refund", "group": "Deposit Refund", "type": "deposit_refund", "cashflow_offset_months": 0, "is_refund": True},
 ]
 # ------------------ CAPEX Working Endpoint ------------------
 # Returns all CAPEX items for reference/modeling (like Opex working)
@@ -244,7 +244,12 @@ class RevenueCalcResponse(BaseModel):
     monthly_totals: Dict[str, float]
     monthly_recurring_totals: Dict[str, float]
     monthly_one_time_totals: Dict[str, float]
+    # Passthrough P&L (e.g., Small Cell rent/electricity passthrough)
+    monthly_passthrough_revenue: Dict[str, float] = Field(default_factory=dict)
+    monthly_passthrough_expense: Dict[str, float] = Field(default_factory=dict)
     total_revenue: float
+    total_passthrough_revenue: float = 0.0
+    total_passthrough_expense: float = 0.0
     # Opex outputs
     opex_items: List[Dict[str, Any]] = Field(default_factory=list, description="Per opex item monthly + total")
     monthly_opex_totals: Dict[str, float] = Field(default_factory=dict)
@@ -273,6 +278,17 @@ class RevenueCalcResponse(BaseModel):
 
 def _dim_key(dimensions: Dict[str,str]) -> str:
     return '|'.join(f"{k}={dimensions[k]}" for k in sorted(dimensions.keys()))
+
+
+def _get_site_type(dimensions: Dict[str, Any] | None) -> str:
+    """Return normalized site type from dimensions (case-insensitive key lookup)."""
+    if not dimensions:
+        return ""
+    for k, v in dimensions.items():
+        key_norm = str(k).replace('_', ' ').replace('-', ' ').strip().lower()
+        if key_norm == 'site type':
+            return str(v or '')
+    return ""
 
 # Ensure app is always defined at the top level (single instance created earlier)
 
@@ -350,8 +366,13 @@ class DynamicVolumeCombination(BaseModel):
     exit_volumes: Dict[str, float] = Field(default_factory=dict)
     included: Optional[bool] = True  # frontend may send for clarity; backend ignores if False
     existing_revenue: Dict[str, Dict[str, Dict[str, float]]] = Field(default_factory=dict, description="Uploaded existing revenue overrides per base exit year. Structure: { base_year: { 'recurring': {Month: value}, 'one_time': {Month: value} } }")
-    fresh_offset_months: int | None = Field(default=None, ge=0, description="Optional per-combination fresh offset (months) overriding global fresh_offset_months in revenue calc.")
+    existing_cashflow: Dict[str, Dict[str, Dict[str, float]]] = Field(default_factory=dict, description="Uploaded existing cashflow overrides per base exit year (already timed, no offsets applied). Structure: { base_year: { 'recurring': {Month: value}, 'one_time': {Month: value} } }")
+    fresh_offset_months: int | None = Field(default=None, ge=0, description="Optional per-combination fresh offset (months) overriding global fresh_offset_months in revenue calc. Deprecated: use recurring_offset_months and one_time_offset_months instead.")
+    recurring_offset_months: int | None = Field(default=None, ge=0, description="Per-combination recurring revenue P&L offset (months). Overrides fresh_offset_months for recurring revenue.")
+    one_time_offset_months: int | None = Field(default=None, ge=0, description="Per-combination one-time revenue P&L offset (months). Overrides fresh_offset_months for one-time revenue.")
     cashflow_offset_months: int | None = Field(default=0, ge=0, description="Per-combination cashflow timing offset (months) applied to P&L inflows and outflows when generating cashflow summary.")
+    cashflow_recurring_offset_months: int | None = Field(default=None, ge=0, description="Per-combination cashflow offset for recurring inflows. Falls back to cashflow_offset_months if unset.")
+    cashflow_one_time_offset_months: int | None = Field(default=None, ge=0, description="Per-combination cashflow offset for one-time inflows. Falls back to cashflow_offset_months if unset.")
     # CAPEX specific independent offsets
     capex_offset_months: int | None = Field(default=0, ge=0, description="Recognition offset (months) for CAPEX fresh cumulative volume logic (separate from revenue/opex).")
     capex_cashflow_offset_months: int | None = Field(default=0, ge=0, description="Cash timing offset (months) for CAPEX items at combination level (added to per-item CAPEX cashflow offsets).")
@@ -390,7 +411,9 @@ class RevenueCalcPayload(BaseModel):
     formula_recurring: Optional[str] = Field(default=None, description="Expression for recurring revenue per month. Variables: volume, recurring_rate. Functions: basic math, min,max,round,abs,pow,sqrt,ceil,floor,log,log10,exp.")
     formula_one_time: Optional[str] = Field(default=None, description="Expression for one-time revenue (evaluated yearly). Variables: total_volume_year, one_time_rate.")
     base_exit_year: Optional[str] = Field(default=None, description="Prior year whose exit volume should be treated as existing base volume.")
-    fresh_offset_months: int = Field(default=0, ge=0, description="Number of months to delay recognition of fresh volumes. A fresh volume in month t contributes to revenue starting month t + offset. If t+offset is beyond fiscal year, it is not recognized this year.")
+    fresh_offset_months: int = Field(default=0, ge=0, description="Number of months to delay recognition of fresh volumes. Deprecated: use recurring_offset_months and one_time_offset_months for separate control.")
+    recurring_offset_months: int = Field(default=0, ge=0, description="Number of months to delay recognition of fresh recurring revenue. Overrides fresh_offset_months for recurring if provided.")
+    one_time_offset_months: int = Field(default=0, ge=0, description="Number of months to delay recognition of fresh one-time revenue. Overrides fresh_offset_months for one-time if provided.")
     include_fresh_volumes: bool = Field(default=True, description="If false, ignore all fresh volumes (only existing base exit volume revenue flows).")
     # Opex extensions
     opex_items: List[Dict[str, Any]] = Field(default_factory=list, description="List of Opex items: each requires name (str) and fresh_offset_months (int >=0). Example: [{name:'Power', fresh_offset_months:1}]")
@@ -404,8 +427,13 @@ class RevenueCalcPayload(BaseModel):
     # ------------------ Template / Upload Endpoints ------------------
     @app.get("/api/template/existing")
     async def download_existing_template():
-        """Return CSV template for existing revenue upload.
+        """Return CSV template for existing revenue/cashflow upload.
         Columns: Customer,Circle,Type,Revenue Type,Fiscal Year,Apr,...,Mar,Total,Exit Volume
+        Allowed Revenue Type values:
+            - recurring
+            - one time
+            - cashflow recurring (already timed; no offsets applied)
+            - cashflow one time (already timed; no offsets applied)
         """
         header = ["Customer","Circle","Type","Revenue Type","Fiscal Year"] + FISCAL_MONTHS + ["Total","Exit Volume"]
         csv_content = ",".join(header) + "\n"
@@ -440,10 +468,22 @@ class RevenueCalcPayload(BaseModel):
                     errors.append(f"Row {idx+1}: blank mandatory field")
                     continue
                 rev_type_norm = rev_type.lower()
-                if rev_type_norm not in ('recurring','one time','one-time','onetime'):
+                valid_types = ('recurring','one time','one-time','onetime','cashflow recurring','cf recurring','cashflow one time','cashflow one-time','cashflow onetime','cf one time','cf one-time','cf onetime')
+                if rev_type_norm not in valid_types:
                     errors.append(f"Row {idx+1}: invalid Revenue Type '{rev_type}'")
                     continue
-                key = (cust,circle,typ,fy, 'recurring' if rev_type_norm.startswith('recurring') else 'one_time')
+                if rev_type_norm.startswith('recurring'):
+                    rt = 'recurring'
+                elif rev_type_norm.startswith('one'):
+                    rt = 'one_time'
+                elif 'cashflow' in rev_type_norm or rev_type_norm.startswith('cf '):
+                    if 'recurring' in rev_type_norm:
+                        rt = 'cf_recurring'
+                    else:
+                        rt = 'cf_one_time'
+                else:
+                    rt = 'recurring'
+                key = (cust,circle,typ,fy, rt)
                 # Parse months
                 months_parsed: Dict[str,float] = {}
                 month_error = False
@@ -490,15 +530,23 @@ class RevenueCalcPayload(BaseModel):
                     'fiscal_year': fy,
                     'exit_volume': 0.0,
                     'recurring': {m:0.0 for m in FISCAL_MONTHS},
-                    'one_time': {m:0.0 for m in FISCAL_MONTHS}
+                    'one_time': {m:0.0 for m in FISCAL_MONTHS},
+                    'cf_recurring': {m:0.0 for m in FISCAL_MONTHS},
+                    'cf_one_time': {m:0.0 for m in FISCAL_MONTHS},
                 })
                 entry['exit_volume'] += data['exit_volume']
                 if rt == 'recurring':
                     for m,v in data['months'].items():
                         entry['recurring'][m] += v
-                else:
+                elif rt == 'one_time':
                     for m,v in data['months'].items():
                         entry['one_time'][m] += v
+                elif rt == 'cf_recurring':
+                    for m,v in data['months'].items():
+                        entry['cf_recurring'][m] += v
+                elif rt == 'cf_one_time':
+                    for m,v in data['months'].items():
+                        entry['cf_one_time'][m] += v
             return list(combo_year_map.values())
 
         if filename.endswith('.xlsx') or filename.endswith('.xls'):
@@ -620,7 +668,130 @@ class RevenueCalcPayload(BaseModel):
             rows = _process_rows(list(enumerate(reader)))
         return {"rows": rows}
 
-    class RevenueRow(BaseModel):
+    @app.post("/api/opex/rates-template")
+    async def get_opex_rates_template(payload: dict = Body(...)):
+        """Generate OPEX rates template CSV matching frontend table structure.
+        
+        Format: Combination | Item1 (Existing Rate) | Item1 (Fresh Rate) | Item2 (Existing Rate) | ...
+        """
+        volumes = payload.get('volumes', [])
+        opex_items_list = payload.get('opex_items', [])
+        
+        if not volumes or not opex_items_list:
+            raise HTTPException(status_code=400, detail="volumes and opex_items are required")
+        
+        # Build header: Combination + (Item_Existing, Item_Fresh) for each item
+        header = ["Combination"]
+        for item in opex_items_list:
+            item_name = item.get('name', '')
+            header.append(f"{item_name} (Existing Rate)")
+            header.append(f"{item_name} (Fresh Rate)")
+        
+        csv_lines = [",".join(header)]
+        
+        # Generate rows: one row per combination
+        for combo in volumes:
+            dims = combo.get('dimensions', {})
+            combo_name = " / ".join(str(dims.get(k, "")) for k in dims.keys())
+            
+            row = [combo_name]
+            for item in opex_items_list:
+                row.append("")  # Existing Rate (empty for user input)
+                row.append("")  # Fresh Rate (empty for user input)
+            
+            csv_lines.append(",".join(row))
+        
+        csv_content = "\n".join(csv_lines)
+        return StreamingResponse(
+            iter([csv_content.encode('utf-8')]),
+            media_type="text/csv",
+            headers={"Content-Disposition": "attachment; filename=opex_rates_template.csv"}
+        )
+
+    @app.post("/api/opex/rates-upload")
+    async def upload_opex_rates(file: UploadFile = File(...)):
+        """Parse uploaded OPEX rates CSV in transposed format.
+        
+        Expected format: Combination | Item1 (Existing Rate) | Item1 (Fresh Rate) | Item2 (Existing Rate) | ...
+        Returns: { rates: { "item": { "combo": { "existing_rate": X, "fresh_rate": Y } } } }
+        """
+        filename = file.filename.lower()
+        content = await file.read()
+        
+        if filename.endswith('.xlsx') or filename.endswith('.xls'):
+            if not pd:
+                raise HTTPException(status_code=415, detail="XLSX support requires pandas. Upload CSV instead.")
+            try:
+                df = pd.read_excel(io.BytesIO(content))
+            except Exception as e:
+                raise HTTPException(status_code=400, detail=f"Failed to read Excel: {e}")
+            rows = df.to_dict('records')
+            col_names = list(df.columns)
+        else:
+            try:
+                text = content.decode('utf-8-sig')
+            except Exception:
+                raise HTTPException(status_code=400, detail="File must be UTF-8 text")
+            reader = csv.DictReader(io.StringIO(text))
+            col_names = reader.fieldnames or []
+            rows = list(reader)
+        
+        if not rows:
+            raise HTTPException(status_code=400, detail="No data rows found in file")
+        
+        # Parse rates from transposed format
+        rates = {}
+        errors = []
+        
+        # Column 0 is Combination, then pairs of (Item Existing, Item Fresh)
+        for idx, row in enumerate(rows, start=2):
+            try:
+                combo = str(row.get('Combination', '')).strip()
+                if not combo:
+                    errors.append(f"Row {idx}: Missing Combination")
+                    continue
+                
+                # Parse all other columns as rate pairs
+                for col_idx, col_name in enumerate(col_names):
+                    if col_name.lower() == 'combination':
+                        continue
+                    
+                    # Extract item name from column header like "Item Name (Existing Rate)"
+                    if '(Existing Rate)' in col_name:
+                        item_name = col_name.replace(' (Existing Rate)', '').strip()
+                        existing_val = row.get(col_name, '')
+                        
+                        # Find corresponding Fresh Rate column
+                        fresh_col_name = f"{item_name} (Fresh Rate)"
+                        fresh_val = row.get(fresh_col_name, '')
+                        
+                        try:
+                            existing_rate = float(existing_val) if existing_val and str(existing_val).strip() else 0.0
+                        except (ValueError, TypeError):
+                            errors.append(f"Row {idx}: Invalid Existing Rate for {item_name}: '{existing_val}'")
+                            continue
+                        
+                        try:
+                            fresh_rate = float(fresh_val) if fresh_val and str(fresh_val).strip() else 0.0
+                        except (ValueError, TypeError):
+                            errors.append(f"Row {idx}: Invalid Fresh Rate for {item_name}: '{fresh_val}'")
+                            continue
+                        
+                        if item_name not in rates:
+                            rates[item_name] = {}
+                        rates[item_name][combo] = {
+                            "existing_rate": existing_rate,
+                            "fresh_rate": fresh_rate
+                        }
+            except Exception as e:
+                errors.append(f"Row {idx}: {str(e)}")
+        
+        if errors:
+            raise HTTPException(status_code=422, detail={"errors": errors})
+        
+        return {"rates": rates, "rows_processed": len(rows)}
+
+
         dimensions: Dict[str, str]
         monthly_revenue: Dict[str, float]
         monthly_recurring: Dict[str, float] = Field(default_factory=dict)
@@ -897,6 +1068,20 @@ def _handler_sdu(payload: RevenueCalcPayload) -> RevenueCalcResponse:
     return _revenue_calc_core(payload)
 
 
+def _handler_dark_fiber(payload: RevenueCalcPayload) -> RevenueCalcResponse:
+    """Dark Fiber revenue logic handler.
+
+    Dark Fiber uses the standard core logic with:
+    - Fresh Recurring: cumulative fresh volume (after offset) * recurring rate
+    - Existing Recurring: base exit volume * recurring rate
+    - Fresh One-Time (P&L): cumulative fresh volume (after offset) * one-time rate / 180
+    - Existing One-Time (P&L): base exit volume * one-time rate / 180
+    - Fresh One-Time Cashflow: fresh volume (non-cumulative, after offset) * one-time rate
+    """
+    payload.lob = 'Dark Fiber'
+    return _revenue_calc_core(payload)
+
+
 def _handler_ohfc(payload: RevenueCalcPayload) -> RevenueCalcResponse:
     """OHFC revenue logic handler.
 
@@ -926,6 +1111,21 @@ def _handler_dark_fiber(payload: RevenueCalcPayload) -> RevenueCalcResponse:
     return _revenue_calc_core(payload)
 
 
+def _handler_co_build(payload: RevenueCalcPayload) -> RevenueCalcResponse:
+    """Co Build revenue logic handler.
+
+    Co Build specific behavior (identical to Dark Fiber):
+    1. Fresh Recurring revenue: Fresh cumulative volume (after offset) * recurring rate
+    2. Existing Recurring revenue: Base exit year volume * recurring rate (no offset)
+    3. Fresh One-Time: cumulative fresh volume (after offset) * one_time_rate / 180
+    4. Existing One-Time: base exit volume * one_time_rate / 180
+    
+    Co Build uses the standard division factor of 180 for one-time revenue spread over fiscal year.
+    """
+    payload.lob = 'Co Build'
+    return _revenue_calc_core(payload)
+
+
 def _revenue_calc_core(payload: RevenueCalcPayload) -> RevenueCalcResponse:
     """Core revenue/cost/cashflow calculation.
 
@@ -942,6 +1142,11 @@ def _revenue_calc_core(payload: RevenueCalcPayload) -> RevenueCalcResponse:
         'log': math.log, 'log10': math.log10, 'exp': math.exp
     }
     allowed_names = set(allowed_funcs.keys()) | {'volume','recurring_rate','total_volume_year','one_time_rate','v','r','volume_year'}
+
+    lob_upper = (getattr(payload, 'lob', 'FTTH') or 'FTTH').upper()
+    passthrough_site_types = {'HPSC', 'LITE SITE', 'HLS'}
+    passthrough_items = {'ELECTRICITY', 'RENT'}
+    enable_small_cell_passthrough = lob_upper == 'SMALL CELL'
 
     def _safe_eval(expr: str, variables: Dict[str, float]) -> float:
         try:
@@ -974,8 +1179,14 @@ def _revenue_calc_core(payload: RevenueCalcPayload) -> RevenueCalcResponse:
 
     # Build volume map
     vol_map: Dict[str, Dict[str,float]] = {}
-    offset_map: Dict[str, int | None] = {}
+    offset_map: Dict[str, int | None] = {}  # Deprecated: backward compatibility
+    recurring_offset_map: Dict[str, int | None] = {}
+    one_time_offset_map: Dict[str, int | None] = {}
     cashflow_offset_map: Dict[str, int] = {}
+    cashflow_rec_offset_map: Dict[str, int | None] = {}
+    cashflow_ot_offset_map: Dict[str, int | None] = {}
+    existing_cashflow_rec_map: Dict[str, Dict[str,float]] = {}
+    existing_cashflow_ot_map: Dict[str, Dict[str,float]] = {}
     # Track combos that represent decommissioning so we can invert exit volumes (E)
     decom_map: Dict[str, bool] = {}
     for combo in payload.volumes:
@@ -990,18 +1201,58 @@ def _revenue_calc_core(payload: RevenueCalcPayload) -> RevenueCalcResponse:
         decom_map[key] = is_decom
         # If decom, negate monthly volumes so downstream calculations treat them as reductions
         vol_map[key] = {m: (-(float(fy_months.get(m,0) or 0)) if is_decom else float(fy_months.get(m,0) or 0)) for m in months}
-        # Store fresh offset - handle both int and string inputs
+        # Store offsets - handle both int and string inputs
         combo_fresh_offset = getattr(combo, 'fresh_offset_months', None)
+        combo_recurring_offset = getattr(combo, 'recurring_offset_months', None)
+        combo_one_time_offset = getattr(combo, 'one_time_offset_months', None)
+        combo_cf_rec_offset = getattr(combo, 'cashflow_recurring_offset_months', None)
+        combo_cf_ot_offset = getattr(combo, 'cashflow_one_time_offset_months', None)
+        # Existing cashflow (already timed, no offsets applied). Use base_exit_year key if provided.
+        if payload.base_exit_year:
+            cf_map = getattr(combo, 'existing_cashflow', {}) or {}
+            cf_entry = cf_map.get(payload.base_exit_year, {}) if isinstance(cf_map, dict) else {}
+            if cf_entry:
+                rec_cf = cf_entry.get('recurring', {}) or {}
+                ot_cf = cf_entry.get('one_time', {}) or {}
+                existing_cashflow_rec_map[key] = {m: float(rec_cf.get(m,0) or 0) for m in FISCAL_MONTHS}
+                existing_cashflow_ot_map[key] = {m: float(ot_cf.get(m,0) or 0) for m in FISCAL_MONTHS}
         if combo_fresh_offset is not None:
             try:
                 combo_fresh_offset = int(combo_fresh_offset)
             except (ValueError, TypeError):
                 combo_fresh_offset = None
-        offset_map[key] = combo_fresh_offset
-        if combo_fresh_offset is not None and combo_fresh_offset > 0:
-            print(f"[OFFSET] {key}: fresh_offset_months={combo_fresh_offset}")
+        if combo_recurring_offset is not None:
+            try:
+                combo_recurring_offset = int(combo_recurring_offset)
+            except (ValueError, TypeError):
+                combo_recurring_offset = None
+        if combo_one_time_offset is not None:
+            try:
+                combo_one_time_offset = int(combo_one_time_offset)
+            except (ValueError, TypeError):
+                combo_one_time_offset = None
+        if combo_cf_rec_offset is not None:
+            try:
+                combo_cf_rec_offset = int(combo_cf_rec_offset)
+            except (ValueError, TypeError):
+                combo_cf_rec_offset = None
+        if combo_cf_ot_offset is not None:
+            try:
+                combo_cf_ot_offset = int(combo_cf_ot_offset)
+            except (ValueError, TypeError):
+                combo_cf_ot_offset = None
+        offset_map[key] = combo_fresh_offset  # Backward compatibility
+        recurring_offset_map[key] = combo_recurring_offset
+        one_time_offset_map[key] = combo_one_time_offset
+        if combo_recurring_offset is not None and combo_recurring_offset > 0:
+            print(f"[OFFSET] {key}: recurring_offset_months={combo_recurring_offset}")
+        if combo_one_time_offset is not None and combo_one_time_offset > 0:
+            print(f"[OFFSET] {key}: one_time_offset_months={combo_one_time_offset}")
         cf_off = getattr(combo, 'cashflow_offset_months', 0) or 0
         cashflow_offset_map[key] = max(int(cf_off), 0)
+        # Specific cashflow offsets for recurring / one-time (fallback to combo CF offset later)
+        cashflow_rec_offset_map[key] = combo_cf_rec_offset if combo_cf_rec_offset is not None else None
+        cashflow_ot_offset_map[key] = combo_cf_ot_offset if combo_cf_ot_offset is not None else None
     rate_map: Dict[str, RateEntry] = {}
     for r in payload.rates:
         rate_map[_dim_key(r.dimensions)] = r
@@ -1009,6 +1260,11 @@ def _revenue_calc_core(payload: RevenueCalcPayload) -> RevenueCalcResponse:
     monthly_totals = {m:0.0 for m in months}
     monthly_recurring_totals = {m:0.0 for m in months}
     monthly_one_time_totals = {m:0.0 for m in months}
+    # Passthrough P&L trackers (e.g., Small Cell rent/electricity)
+    monthly_passthrough_revenue = {m:0.0 for m in months}
+    monthly_passthrough_expense = {m:0.0 for m in months}
+    total_passthrough_revenue = 0.0
+    total_passthrough_expense = 0.0
     rows: List[RevenueRow] = []
     grand_total = 0.0
     DEN = 180.0
@@ -1020,6 +1276,7 @@ def _revenue_calc_core(payload: RevenueCalcPayload) -> RevenueCalcResponse:
         FO = r.one_time_rate if r else 0.0
         ER = r.existing_recurring_rate if r else 0.0
         EO = r.existing_one_time_rate if r else 0.0
+        print(f"[RATES] key={key}: FR={FR}, FO={FO}, ER={ER}, EO={EO}")
         include_fresh = getattr(payload, 'include_fresh_volumes', True)
         combo_obj = None
         for c in payload.volumes:
@@ -1034,6 +1291,7 @@ def _revenue_calc_core(payload: RevenueCalcPayload) -> RevenueCalcResponse:
             # If this combination is a decommissioning entry, treat the base exit volume as negative
             if decom_map.get(key):
                 E = -E
+        print(f"[BASE-EXIT] key={key}, base_exit_year={payload.base_exit_year}, E={E}, exit_volumes={combo_obj.exit_volumes if combo_obj else 'N/A'}")
         existing_override_rec: Dict[str, float] | None = None
         existing_override_ot: Dict[str, float] | None = None
         if payload.base_exit_year and combo_obj and combo_obj.existing_revenue:
@@ -1048,9 +1306,16 @@ def _revenue_calc_core(payload: RevenueCalcPayload) -> RevenueCalcResponse:
         for v in raw_vols:
             running += v
             cum_raw.append(running)
+        print(f"[VOL-DEBUG] key={key}, raw_vols={raw_vols}, cum_raw={cum_raw}")
         combo_offset = offset_map.get(key)
-        # Coerce combo_offset to an integer safely (handle strings like '02')
+        combo_recurring_off = recurring_offset_map.get(key)
+        combo_one_time_off = one_time_offset_map.get(key)
+        
+        # Coerce offsets to integers safely (handle strings like '02')
         parsed_combo_offset = None
+        parsed_recurring_offset = None
+        parsed_one_time_offset = None
+        
         try:
             if combo_offset is not None:
                 parsed_combo_offset = int(combo_offset)
@@ -1058,12 +1323,57 @@ def _revenue_calc_core(payload: RevenueCalcPayload) -> RevenueCalcResponse:
                     parsed_combo_offset = None
         except (ValueError, TypeError):
             parsed_combo_offset = None
-        # Use combo-specific offset if available, otherwise fall back to payload-level offset
-        # Offset applies to all LOBs
-        offset = parsed_combo_offset if parsed_combo_offset is not None else max(int(getattr(payload, 'fresh_offset_months', 0) or 0), 0)
         
-        if offset > 0:
-            print(f"[CALC] key={key}, using offset={offset}, include_fresh={include_fresh}, FR={FR}, FO={FO}")
+        try:
+            if combo_recurring_off is not None:
+                parsed_recurring_offset = int(combo_recurring_off)
+                if parsed_recurring_offset < 0:
+                    parsed_recurring_offset = None
+        except (ValueError, TypeError):
+            parsed_recurring_offset = None
+            
+        try:
+            if combo_one_time_off is not None:
+                parsed_one_time_offset = int(combo_one_time_off)
+                if parsed_one_time_offset < 0:
+                    parsed_one_time_offset = None
+        except (ValueError, TypeError):
+            parsed_one_time_offset = None
+        
+        # Determine offsets with fallback logic:
+        # 1. Use combo-specific recurring/one-time offset if provided
+        # 2. Fall back to combo fresh_offset_months (deprecated)
+        # 3. Fall back to payload-level recurring/one-time offset if provided
+        # 4. Fall back to payload fresh_offset_months (deprecated)
+        payload_recurring = max(int(getattr(payload, 'recurring_offset_months', 0) or 0), 0)
+        payload_one_time = max(int(getattr(payload, 'one_time_offset_months', 0) or 0), 0)
+        payload_fresh = max(int(getattr(payload, 'fresh_offset_months', 0) or 0), 0)
+        
+        # Recurring offset: prefer specific recurring, then combo fresh, then payload recurring, then payload fresh
+        if parsed_recurring_offset is not None:
+            recurring_offset = parsed_recurring_offset
+        elif parsed_combo_offset is not None:
+            recurring_offset = parsed_combo_offset
+        elif payload_recurring > 0:
+            recurring_offset = payload_recurring
+        else:
+            recurring_offset = payload_fresh
+            
+        # One-time offset: prefer specific one-time, then combo fresh, then payload one-time, then payload fresh
+        if parsed_one_time_offset is not None:
+            one_time_offset = parsed_one_time_offset
+        elif parsed_combo_offset is not None:
+            one_time_offset = parsed_combo_offset
+        elif payload_one_time > 0:
+            one_time_offset = payload_one_time
+        else:
+            one_time_offset = payload_fresh
+        
+        # Backward compatibility: keep single offset variable for other uses
+        offset = parsed_combo_offset if parsed_combo_offset is not None else payload_fresh
+        
+        if recurring_offset > 0 or one_time_offset > 0:
+            print(f"[CALC] key={key}, recurring_offset={recurring_offset}, one_time_offset={one_time_offset}, include_fresh={include_fresh}, FR={FR}, FO={FO}")
         
         # Check LOB flags for custom logic
         lob_name = (getattr(payload, 'lob', 'FTTH') or 'FTTH').upper()
@@ -1071,6 +1381,21 @@ def _revenue_calc_core(payload: RevenueCalcPayload) -> RevenueCalcResponse:
         is_sdu = lob_name == 'SDU'
         is_ohfc = lob_name == 'OHFC'
         is_active = lob_name == 'ACTIVE'
+        is_dark_fiber = lob_name == 'DARK FIBER'
+
+        # Dark Fiber: optionally multiply fresh components by number of pairs captured in dimensions
+        pair_multiplier = 1.0
+        if is_dark_fiber and combo_obj and isinstance(combo_obj.dimensions, dict):
+            for k, v in combo_obj.dimensions.items():
+                try:
+                    key_norm = str(k).lower().replace('_', ' ').strip()
+                    if 'pair' in key_norm:
+                        parsed = float(v)
+                        if parsed > 0:
+                            pair_multiplier = parsed
+                        break
+                except Exception:
+                    continue
 
         # Extract lock-in (months) for SDU; default to 1 to avoid divide-by-zero
         lock_in_val = 1.0
@@ -1128,107 +1453,130 @@ def _revenue_calc_core(payload: RevenueCalcPayload) -> RevenueCalcResponse:
                 else:
                     existing_ot_m = (E * EO / DEN) if EO else 0.0
             
-            eff_cum = 0.0
+            # Calculate cumulative volumes for recurring (uses recurring_offset)
+            eff_cum_recurring = 0.0
+            # Calculate cumulative volumes for one-time (uses one_time_offset)
+            eff_cum_one_time = 0.0
             prev_eff_cum = 0.0
-            fresh_vol_month = 0.0  # Non-cumulative fresh volume for this month
+            fresh_vol_month = 0.0  # Non-cumulative fresh volume for this month (for cashflow)
             
             if include_fresh:
-                # Only use cumulative volume if we're past the offset point
-                # idx >= offset means month index is >= offset, so we can safely access cum_raw[idx - offset]
+                # Recurring: use recurring_offset
+                if idx >= recurring_offset and len(cum_raw) > (idx - recurring_offset):
+                    eff_cum_recurring = cum_raw[idx - recurring_offset]
+                    if idx < 4:
+                        print(f"[LOOP-REC] month {idx}({m}): idx({idx}) >= recurring_offset({recurring_offset}), eff_cum_recurring={eff_cum_recurring}, cum_raw[{idx-recurring_offset}]={cum_raw[idx-recurring_offset]}")
+                else:
+                    eff_cum_recurring = 0.0
+                    if idx < 4:
+                        print(f"[LOOP-REC] month {idx}({m}): idx({idx}) < recurring_offset({recurring_offset}), eff_cum_recurring=0, cum_raw length={len(cum_raw)}")
+                
+                # One-time: use one_time_offset
+                if idx >= one_time_offset and len(cum_raw) > (idx - one_time_offset):
+                    eff_cum_one_time = cum_raw[idx - one_time_offset]
+                    if one_time_offset > 0 and idx < 4:
+                        print(f"[LOOP-OT] month {idx}({m}): idx({idx}) >= one_time_offset({one_time_offset}), eff_cum_one_time={eff_cum_one_time}")
+                else:
+                    eff_cum_one_time = 0.0
+                    if one_time_offset > 0 and idx < 4:
+                        print(f"[LOOP-OT] month {idx}({m}): idx({idx}) < one_time_offset({one_time_offset}), eff_cum_one_time=0")
+                
+                # Get non-cumulative fresh volume for this month (for cashflow) - use offset for backward compatibility
                 if idx >= offset and len(cum_raw) > (idx - offset):
                     eff_cum = cum_raw[idx - offset]
-                    # Get non-cumulative fresh volume for this month
                     if idx == offset:
-                        # First month after offset: use cumulative volume directly
                         fresh_vol_month = eff_cum
                     else:
-                        # Subsequent months: diff from previous cumulative
                         prev_cum = cum_raw[(idx - 1) - offset] if len(cum_raw) > ((idx - 1) - offset) else 0.0
                         fresh_vol_month = eff_cum - prev_cum
-                    if offset > 0 and idx < 4:
-                        print(f"[LOOP] month {idx}({m}): idx({idx}) >= offset({offset}), eff_cum={eff_cum}, fresh_vol_month={fresh_vol_month}")
                 else:
-                    eff_cum = 0.0
                     fresh_vol_month = 0.0
-                    if offset > 0 and idx < 4:
-                        print(f"[LOOP] month {idx}({m}): idx({idx}) < offset({offset}), eff_cum=0")
-                # Track previous month's effective cumulative for one-time recognition (first arrival only)
-                if idx > 0 and (idx - 1) >= offset and len(cum_raw) > ((idx - 1) - offset):
-                    prev_eff_cum = cum_raw[(idx - 1) - offset]
-                else:
-                    prev_eff_cum = 0.0
-                if offset > 0 and idx < 4:
-                    print(f"[PREV] month {idx}({m}): prev_eff_cum={prev_eff_cum}")
+                
+                # Get non-cumulative fresh volume for one-time (uses one_time_offset)
+                fresh_vol_month_ot = 0.0
+                if idx >= one_time_offset and len(cum_raw) > (idx - one_time_offset):
+                    eff_cum_ot = cum_raw[idx - one_time_offset]
+                    if idx == one_time_offset:
+                        fresh_vol_month_ot = eff_cum_ot
+                    else:
+                        prev_cum_ot = cum_raw[(idx - 1) - one_time_offset] if len(cum_raw) > ((idx - 1) - one_time_offset) else 0.0
+                        fresh_vol_month_ot = eff_cum_ot - prev_cum_ot
             
-            # Fresh Recurring (P&L): cumulative fresh volume (after offset) * recurring rate
+            # Fresh Recurring (P&L): cumulative fresh volume (after recurring_offset) * recurring rate
             # SDU: Staggered recognition - half immediate, half delayed by 2 months
-            # Others: cumulative fresh volume (after offset) * recurring rate
+            # Others: cumulative fresh volume (after recurring_offset) * recurring rate
             fresh_rec_m = 0.0
-            if include_fresh and idx >= offset and eff_cum > 0:
+            if include_fresh and idx >= recurring_offset and eff_cum_recurring > 0:
                 if is_sdu:
                     # SDU: First tranche (immediate half) + Second tranche (delayed 2 months half)
                     # First tranche: current cumulative / 2 * rate
-                    first_tranche = (eff_cum / 2.0) * FR
+                    first_tranche = (eff_cum_recurring / 2.0) * FR
                     # Second tranche: cumulative from 2 months ago / 2 * rate
                     second_tranche = 0.0
-                    if idx >= offset + 2 and len(cum_raw) > ((idx - 2) - offset):
-                        cum_2_months_ago = cum_raw[(idx - 2) - offset]
+                    if idx >= recurring_offset + 2 and len(cum_raw) > ((idx - 2) - recurring_offset):
+                        cum_2_months_ago = cum_raw[(idx - 2) - recurring_offset]
                         second_tranche = (cum_2_months_ago / 2.0) * FR
                     fresh_rec_m = first_tranche + second_tranche
                 else:
                     if getattr(payload, 'formula_recurring', None):
                         try:
-                            fresh_rec_m = _safe_eval(payload.formula_recurring, {'volume': eff_cum, 'recurring_rate': FR}) if FR else 0.0
+                            fresh_rec_m = _safe_eval(payload.formula_recurring, {'volume': eff_cum_recurring, 'recurring_rate': FR}) if FR else 0.0
                         except HTTPException:
                             raise
                         except Exception:
-                            fresh_rec_m = eff_cum * FR
+                            fresh_rec_m = eff_cum_recurring * FR
                     else:
-                        fresh_rec_m = eff_cum * FR
+                        fresh_rec_m = eff_cum_recurring * FR
+
+            if is_dark_fiber:
+                fresh_rec_m *= pair_multiplier
 
             # Fresh One-Time (P&L):
             # - Small Cell: always zero
             # - Active: always zero
-            # - OHFC: cumulative fresh volume (after offset) * one-time rate / 12
-            # - SDU: cumulative fresh volume (after offset) * one-time rate / (lock_in * 12)
-            # - Others: cumulative fresh volume (after offset) * one-time rate / 180
+            # - OHFC: cumulative fresh volume (after one_time_offset) * one-time rate / 12
+            # - SDU: cumulative fresh volume (after one_time_offset) * one-time rate / (lock_in * 12)
+            # - Others: cumulative fresh volume (after one_time_offset) * one-time rate / 180
             pl_ot_m_fresh = 0.0
-            if not is_small_cell and not is_active and include_fresh and idx >= offset and eff_cum > 0 and FO:
+            if not is_small_cell and not is_active and include_fresh and idx >= one_time_offset and eff_cum_one_time > 0 and FO:
                 if is_ohfc:
                     # OHFC: divide by 12
                     if getattr(payload, 'formula_one_time', None):
                         try:
-                            yearly_ot_fresh = _safe_eval(payload.formula_one_time, {'total_volume_year': eff_cum, 'one_time_rate': FO, 'volume': eff_cum}) if FO else 0.0
+                            yearly_ot_fresh = _safe_eval(payload.formula_one_time, {'total_volume_year': eff_cum_one_time, 'one_time_rate': FO, 'volume': eff_cum_one_time}) if FO else 0.0
                             pl_ot_m_fresh = (yearly_ot_fresh / 12.0) if yearly_ot_fresh else 0.0
                         except HTTPException:
                             raise
                         except Exception:
-                            pl_ot_m_fresh = (eff_cum * FO / 12.0)
+                            pl_ot_m_fresh = (eff_cum_one_time * FO / 12.0)
                     else:
-                        pl_ot_m_fresh = (eff_cum * FO / 12.0)
+                        pl_ot_m_fresh = (eff_cum_one_time * FO / 12.0)
                 elif is_sdu:
                     denom = (lock_in_val * 12.0) if lock_in_val > 0 else 12.0
                     if getattr(payload, 'formula_one_time', None):
                         try:
-                            yearly_ot_fresh = _safe_eval(payload.formula_one_time, {'total_volume_year': eff_cum, 'one_time_rate': FO, 'volume': eff_cum}) if FO else 0.0
+                            yearly_ot_fresh = _safe_eval(payload.formula_one_time, {'total_volume_year': eff_cum_one_time, 'one_time_rate': FO, 'volume': eff_cum_one_time}) if FO else 0.0
                             pl_ot_m_fresh = (yearly_ot_fresh / denom) if yearly_ot_fresh else 0.0
                         except HTTPException:
                             raise
                         except Exception:
-                            pl_ot_m_fresh = (eff_cum * FO / denom)
+                            pl_ot_m_fresh = (eff_cum_one_time * FO / denom)
                     else:
-                        pl_ot_m_fresh = (eff_cum * FO / denom)
+                        pl_ot_m_fresh = (eff_cum_one_time * FO / denom)
                 else:
                     if getattr(payload, 'formula_one_time', None):
                         try:
-                            yearly_ot_fresh = _safe_eval(payload.formula_one_time, {'total_volume_year': eff_cum, 'one_time_rate': FO, 'volume': eff_cum}) if FO else 0.0
+                            yearly_ot_fresh = _safe_eval(payload.formula_one_time, {'total_volume_year': eff_cum_one_time, 'one_time_rate': FO, 'volume': eff_cum_one_time}) if FO else 0.0
                             pl_ot_m_fresh = yearly_ot_fresh / DEN if yearly_ot_fresh else 0.0
                         except HTTPException:
                             raise
                         except Exception:
-                            pl_ot_m_fresh = (eff_cum * FO / DEN)
+                            pl_ot_m_fresh = (eff_cum_one_time * FO / DEN)
                     else:
-                        pl_ot_m_fresh = (eff_cum * FO / DEN)
+                        pl_ot_m_fresh = (eff_cum_one_time * FO / DEN)
+
+            if is_dark_fiber:
+                pl_ot_m_fresh *= pair_multiplier
             
             # For P&L: existing override completely overrides any calculations
             if existing_override_rec is not None and existing_override_ot is not None:
@@ -1242,44 +1590,55 @@ def _revenue_calc_core(payload: RevenueCalcPayload) -> RevenueCalcResponse:
             
             # ===== CASHFLOW CALCULATIONS (ALL LOBS) =====
             # Offset-aware cashflow calculations apply to all LOBs
-            # Existing Recurring Cashflow: base exit volume * recurring rate (after offset month)
-            cashflow_existing_rec_m = 0.0
-            if idx >= offset:
-                cashflow_existing_rec_m = E * ER
+            # Existing Recurring Cashflow: base exit volume * recurring rate with offset = (fresh recurring offset - 1)
+            existing_rec_cf_offset = max((recurring_offset or 0) - 1, 0)
+            cashflow_existing_rec_m = E * ER if idx >= existing_rec_cf_offset else 0.0
+            if idx < 4:
+                print(f"[CASHFLOW-EXIST] month {idx}({m}): E={E}, ER={ER}, existing_rec_cf_offset={existing_rec_cf_offset}, cashflow_existing_rec_m={cashflow_existing_rec_m}")
             
             # Existing One-Time Cashflow: $0 (NO existing one-time cashflow)
             cashflow_existing_ot_m = 0.0
             
-            # Fresh Recurring Cashflow: cumulative fresh volume * recurring rate (after offset)
+            # Fresh Recurring Cashflow: cumulative fresh volume * recurring rate (using UNSHIFTED cumulative - cashflow has its own offset in aggregation)
             cashflow_fresh_rec_m = 0.0
-            if include_fresh and eff_cum > 0 and idx >= offset:
-                if getattr(payload, 'formula_recurring', None):
-                    try:
-                        cashflow_fresh_rec_m = _safe_eval(payload.formula_recurring, {'volume': eff_cum, 'recurring_rate': FR}) if FR else 0.0
-                    except:
-                        cashflow_fresh_rec_m = eff_cum * FR if FR else 0.0
-                else:
-                    cashflow_fresh_rec_m = eff_cum * FR if FR else 0.0
+            if include_fresh and len(cum_raw) > idx:
+                # Use unshifted cumulative (no recurring_offset applied)
+                eff_cum_recurring_cf = cum_raw[idx]
+                if eff_cum_recurring_cf > 0:
+                    if getattr(payload, 'formula_recurring', None):
+                        try:
+                            cashflow_fresh_rec_m = _safe_eval(payload.formula_recurring, {'volume': eff_cum_recurring_cf, 'recurring_rate': FR}) if FR else 0.0
+                        except:
+                            cashflow_fresh_rec_m = eff_cum_recurring_cf * FR if FR else 0.0
+                    else:
+                        cashflow_fresh_rec_m = eff_cum_recurring_cf * FR if FR else 0.0
+                    if idx < 4:
+                        print(f"[CASHFLOW-CF] month {idx}({m}): eff_cum_recurring_cf={eff_cum_recurring_cf}, FR={FR}, cashflow_fresh_rec_m={cashflow_fresh_rec_m}")
+            elif idx < 4:
+                print(f"[CASHFLOW] month {idx}({m}): skipped - include_fresh={include_fresh}, eff_cum_recurring={eff_cum_recurring}, idx={idx}, recurring_offset={recurring_offset}")
+
+            if is_dark_fiber:
+                cashflow_fresh_rec_m *= pair_multiplier
             
-            # Fresh One-Time Cashflow: fresh volume (non-cumulative) * one-time rate (after offset, no division)
-            # For Small Cell and Active, this is always zero
+            # Fresh One-Time Cashflow: fresh volume (non-cumulative) * one-time rate (after offset, NO amortization)
+            # For Small Cell, Active, OHFC: this is always zero
+            # For SDU and others: full amount upfront when customer connects
             cashflow_fresh_ot_m = 0.0
-            if not is_small_cell and not is_active and include_fresh and fresh_vol_month > 0 and FO and idx >= offset:
-                if getattr(payload, 'formula_one_time', None):
-                    try:
-                        cashflow_fresh_ot_m = _safe_eval(payload.formula_one_time, {'total_volume_year': fresh_vol_month, 'one_time_rate': FO, 'volume': fresh_vol_month}) if FO else 0.0
-                    except:
-                        cashflow_fresh_ot_m = fresh_vol_month * FO if FO else 0.0
-                else:
-                    cashflow_fresh_ot_m = fresh_vol_month * FO if FO else 0.0
+            if not is_small_cell and not is_active and not is_ohfc and include_fresh and fresh_vol_month_ot > 0 and FO and idx >= one_time_offset:
+                # Cashflow one-time: full amount upfront, not amortized like P&L
+                cashflow_fresh_ot_m = fresh_vol_month_ot * FO if FO else 0.0
+
+            if is_dark_fiber:
+                cashflow_fresh_ot_m *= pair_multiplier
             
             cashflow_ot_m = cashflow_existing_ot_m + cashflow_fresh_ot_m
             cashflow_rec_m = cashflow_existing_rec_m + cashflow_fresh_rec_m
+            if idx < 4:
+                print(f"[CASHFLOW-TOTAL] month {idx}({m}): cashflow_rec_m={cashflow_rec_m}, cashflow_ot_m={cashflow_ot_m}")
 
             rec_m = existing_rec_m + fresh_rec_m
             ot_m = existing_ot_m_adjusted + fresh_ot_m
-            if offset > 0 and idx < 4:
-                print(f"[REV] month {idx}({m}): existing_ot_m={existing_ot_m_adjusted}, fresh_ot_m={fresh_ot_m}, ot_m={ot_m}, cf_rec={cashflow_rec_m}, cf_ot={cashflow_ot_m}")
+            # debug removed
             # Round per month components before aggregation so row totals equal sum of displayed months
             rec_m_r = round(rec_m, DECIMALS)
             ot_m_r = round(ot_m, DECIMALS)
@@ -1347,6 +1706,8 @@ def _revenue_calc_core(payload: RevenueCalcPayload) -> RevenueCalcResponse:
     opex_items_results: List[Dict[str, Any]] = []
     monthly_opex_totals: Dict[str, float] = {m:0.0 for m in months}
     total_opex = 0.0
+    # Track passthrough (P&L + cash) for qualified site types/items
+    passthrough_combo_pl: Dict[str, Dict[str, Dict[str, float]]] = {}
     # Build lookup for opex rates: item -> key -> (existing_rate,fresh_rate)
     opex_rate_map: Dict[str, Dict[str, Dict[str,float]]] = {}
     for entry in getattr(payload, 'opex_rates', []) or []:
@@ -1373,6 +1734,8 @@ def _revenue_calc_core(payload: RevenueCalcPayload) -> RevenueCalcResponse:
     combo_item_pl: Dict[str, Dict[str, Dict[str, float]]] = {}  # item -> combo_key -> month -> value
     # New: per-opex-item cashflow offsets (additional to combination-level)
     item_cashflow_offset_map: Dict[str, int] = {}
+    passthrough_inflow_offset_map: Dict[str, int] = {}
+    passthrough_outflow_offset_map: Dict[str, int] = {}
     for item in getattr(payload, 'opex_items', []) or []:
         name = item.get('name')
         if not name:
@@ -1383,7 +1746,18 @@ def _revenue_calc_core(payload: RevenueCalcPayload) -> RevenueCalcResponse:
         if item_cashflow_offset < 0:
             item_cashflow_offset = 0
         item_cashflow_offset_map[name] = item_cashflow_offset
-        has_override = name in override_map
+        # Passthrough-specific offsets: inflow and outflow can differ
+        pt_inflow_offset = int(item.get('passthrough_inflow_offset_months') or item_cashflow_offset)
+        pt_outflow_offset = int(item.get('passthrough_outflow_offset_months') or item_cashflow_offset)
+        if pt_inflow_offset < 0:
+            pt_inflow_offset = 0
+        if pt_outflow_offset < 0:
+            pt_outflow_offset = 0
+        passthrough_inflow_offset_map[name] = pt_inflow_offset
+        passthrough_outflow_offset_map[name] = pt_outflow_offset
+        is_passthrough_item = enable_small_cell_passthrough and str(name).strip().upper() in passthrough_items
+        # Passthrough items ignore overrides (always recomputed per combo)
+        has_override = False if is_passthrough_item else name in override_map
         # Start with override months if present, else zeros
         item_monthly = {m: (override_map[name][m] if has_override else 0.0) for m in months}
         # Iterate combinations for fresh + (existing if no override)
@@ -1409,6 +1783,12 @@ def _revenue_calc_core(payload: RevenueCalcPayload) -> RevenueCalcResponse:
                 cum_raw.append(run)
             # Prepare per-combo item store
             cit = combo_item_pl.setdefault(name, {}).setdefault(key, {m:0.0 for m in months})
+            pt_store = None
+            if is_passthrough_item:
+                pt_store = passthrough_combo_pl.setdefault(name, {}).setdefault(key, {m:0.0 for m in months})
+            # Use dimensions-based site type; fallback to explicit site_type attr if present
+            site_type_val = _get_site_type(getattr(combo, 'dimensions', None)) or str(getattr(combo, 'site_type', '') or '')
+            site_type_upper = site_type_val.strip().upper()
             for idx, m in enumerate(months):
                 eff_cum = 0.0
                 if include_fresh:
@@ -1420,6 +1800,13 @@ def _revenue_calc_core(payload: RevenueCalcPayload) -> RevenueCalcResponse:
                 existing_part = 0.0 if has_override else (E * existing_rate)
                 fresh_part = eff_cum * fresh_rate if include_fresh else 0.0
                 val = existing_part + fresh_part
+
+                if is_passthrough_item and site_type_upper in passthrough_site_types:
+                    pt_store[m] += val
+                    monthly_passthrough_revenue[m] += val
+                    monthly_passthrough_expense[m] += val
+                    continue
+
                 item_monthly[m] += val
                 cit[m] += val
         # Round
@@ -1436,32 +1823,106 @@ def _revenue_calc_core(payload: RevenueCalcPayload) -> RevenueCalcResponse:
             'monthly': item_monthly,
             'total': item_total
         })
+    # Add passthrough P&L (Small Cell rent/electricity for specific site types)
+    if enable_small_cell_passthrough and any(v != 0 for v in monthly_passthrough_revenue.values()):
+        monthly_passthrough_revenue = {m: round(v, DECIMALS) for m,v in monthly_passthrough_revenue.items()}
+        monthly_passthrough_expense = {m: round(v, DECIMALS) for m,v in monthly_passthrough_expense.items()}
+        total_passthrough_revenue = round(sum(monthly_passthrough_revenue.values()), DECIMALS)
+        total_passthrough_expense = round(sum(monthly_passthrough_expense.values()), DECIMALS)
+        for m in months:
+            monthly_totals[m] = round(monthly_totals[m] + monthly_passthrough_revenue[m], DECIMALS)
+            monthly_opex_totals[m] += monthly_passthrough_expense[m]
+        grand_total = round(grand_total + total_passthrough_revenue, DECIMALS)
+        total_opex += total_passthrough_expense
+        opex_items_results.append({
+            'name': 'Passthrough Expense',
+            'fresh_offset_months': 0,
+            'cashflow_offset_months': 0,
+            'override_applied': False,
+            'monthly': monthly_passthrough_expense,
+            'total': total_passthrough_expense,
+            'site_types': sorted(list(passthrough_site_types)),
+            'items': ['Electricity', 'Rent']
+        })
+    else:
+        monthly_passthrough_revenue = {m:0.0 for m in months}
+        monthly_passthrough_expense = {m:0.0 for m in months}
+        total_passthrough_revenue = 0.0
+        total_passthrough_expense = 0.0
+
     for m in months:
         monthly_opex_totals[m] = round(monthly_opex_totals[m], DECIMALS)
     total_opex = round(total_opex, DECIMALS)
 
-    # -------- CASHFLOW (shifted) --------
+    # -------- CASHFLOW (shifted) - TESTING DEBUG --------
     cash_recurring = {m:0.0 for m in months}
     cash_one_time = {m:0.0 for m in months}
-    cash_passthrough = {m:0.0 for m in months}  # currently zeros
+    cash_passthrough = {m:0.0 for m in months}
+    passthrough_cash_outflow = {m:0.0 for m in months}
     # Per-item shifted outflows
     cash_item_outflows: Dict[str, Dict[str,float]] = {name: {m:0.0 for m in months} for name in combo_item_pl.keys()}
     # Build helper maps for revenue rows by key
     rev_row_map = {}
     for r in rows:
         rev_row_map[_dim_key(r.dimensions)] = r
+    print(f"[CF-DEBUG] rows list: {len(rows)} rows, checking monthly_cashflow_recurring...")
+    for i, row in enumerate(rows):
+        total_cf_rec = sum(row.monthly_cashflow_recurring.values()) if row.monthly_cashflow_recurring else 0
+        print(f"[CF-DEBUG] row {i}: {row.dimensions}, total monthly_cashflow_recurring sum: {total_cf_rec}, dict: {row.monthly_cashflow_recurring}")
     for key, row in rev_row_map.items():
-        cf_off = cashflow_offset_map.get(key, 0)
+        cf_off_base = cashflow_offset_map.get(key, 0)
+        cf_rec_off = cashflow_rec_offset_map.get(key)
+        cf_ot_off = cashflow_ot_offset_map.get(key)
+        # Fallback to base CF offset when specific offsets are not provided
+        cf_rec_shift = cf_rec_off if cf_rec_off is not None else cf_off_base
+        cf_ot_shift = cf_ot_off if cf_ot_off is not None else cf_off_base
+        # Add uploaded existing cashflow directly (already timed; no shift)
+        ex_cf_rec = existing_cashflow_rec_map.get(key)
+        if ex_cf_rec:
+            for m,v in ex_cf_rec.items():
+                cash_recurring[m] += v
+        ex_cf_ot = existing_cashflow_ot_map.get(key)
+        if ex_cf_ot:
+            for m,v in ex_cf_ot.items():
+                cash_one_time[m] += v
         for idx, m in enumerate(months):
-            target_idx = idx + cf_off
-            if target_idx >= len(months):
-                continue  # discard spillover
-            tm = months[target_idx]
-            cash_recurring[tm] += row.monthly_recurring[m]
-            # For one-time cashflow: use the true one-time amount (monthly_cashflow_one_time)
-            # which is already volume * rate (not spread by 180)
-            cashflow_ot_component = row.monthly_cashflow_one_time.get(m, 0) if hasattr(row, 'monthly_cashflow_one_time') else 0
-            cash_one_time[tm] += cashflow_ot_component
+            # Recurring shift
+            target_idx_rec = idx + cf_rec_shift
+            if target_idx_rec < len(months):
+                tm_rec = months[target_idx_rec]
+                cf_val = row.monthly_cashflow_recurring.get(m, 0)
+                cash_recurring[tm_rec] += cf_val
+            # One-time shift
+            target_idx_ot = idx + cf_ot_shift
+            if target_idx_ot < len(months):
+                tm_ot = months[target_idx_ot]
+                cash_one_time[tm_ot] += row.monthly_cashflow_one_time.get(m, 0)
+
+    # Passthrough inflow/outflow shifting (Small Cell rent/electricity)
+    if enable_small_cell_passthrough:
+        for item_name, combo_map in passthrough_combo_pl.items():
+            pt_inflow_cf_off = passthrough_inflow_offset_map.get(item_name, 0)
+            pt_outflow_cf_off = passthrough_outflow_offset_map.get(item_name, 0)
+            for key, month_vals in combo_map.items():
+                cf_off_combo = cashflow_offset_map.get(key, 0)
+                # Inflow shift: combo offset + passthrough inflow offset
+                inflow_cf_off = cf_off_combo + pt_inflow_cf_off
+                # Outflow shift: combo offset + passthrough outflow offset
+                outflow_cf_off = cf_off_combo + pt_outflow_cf_off
+                for idx, m in enumerate(months):
+                    # Inflow (cash_passthrough)
+                    target_idx_inflow = idx + inflow_cf_off
+                    if target_idx_inflow < len(months):
+                        tm_inflow = months[target_idx_inflow]
+                        shifted_val = round(month_vals[m], DECIMALS)
+                        cash_passthrough[tm_inflow] += shifted_val
+                    # Outflow (passthrough_cash_outflow)
+                    target_idx_outflow = idx + outflow_cf_off
+                    if target_idx_outflow < len(months):
+                        tm_outflow = months[target_idx_outflow]
+                        shifted_val = round(month_vals[m], DECIMALS)
+                        passthrough_cash_outflow[tm_outflow] += shifted_val
+
     # Opex shifting per combination & item
     for item_name, combo_map in combo_item_pl.items():
         base_item_cf_off = item_cashflow_offset_map.get(item_name, 0)
@@ -1481,6 +1942,7 @@ def _revenue_calc_core(payload: RevenueCalcPayload) -> RevenueCalcResponse:
     for m in months:
         for item_name in cash_item_outflows.keys():
             cash_outflow_totals[m] += cash_item_outflows[item_name][m]
+        cash_outflow_totals[m] += passthrough_cash_outflow[m]
         cash_outflow_totals[m] = round(cash_outflow_totals[m], DECIMALS)
     cash_net_operating = {m: round(cash_gross[m] - cash_outflow_totals[m], DECIMALS) for m in months}
     # Build per-item list
@@ -1492,11 +1954,31 @@ def _revenue_calc_core(payload: RevenueCalcPayload) -> RevenueCalcResponse:
             'monthly': {m: round(mv[m], DECIMALS) for m in months},
             'total': round(sum(mv.values()), DECIMALS)
         })
-    total_cash_rec = round(sum(cash_recurring.values()), DECIMALS)
-    total_cash_one = round(sum(cash_one_time.values()), DECIMALS)
-    total_cash_gross = round(sum(cash_gross.values()), DECIMALS)
-    total_cash_outflow = round(sum(cash_outflow_totals.values()), DECIMALS)
-    total_cash_net = round(sum(cash_net_operating.values()), DECIMALS)
+    if enable_small_cell_passthrough and any(v != 0 for v in passthrough_cash_outflow.values()):
+        cash_outflow_items_list.append({
+            'name': 'Passthrough Expense',
+            'cashflow_offset_months': 0,
+            'monthly': {m: round(passthrough_cash_outflow[m], DECIMALS) for m in months},
+            'total': round(sum(passthrough_cash_outflow.values()), DECIMALS)
+        })
+    # Convert cashflow to millions for display
+    cash_recurring = {m: round(v / 1_000_000, 2) for m, v in cash_recurring.items()}
+    cash_one_time = {m: round(v / 1_000_000, 2) for m, v in cash_one_time.items()}
+    cash_passthrough = {m: round(v / 1_000_000, 2) for m, v in cash_passthrough.items()}
+    cash_gross = {m: round(v / 1_000_000, 2) for m, v in cash_gross.items()}
+    cash_outflow_totals = {m: round(v / 1_000_000, 2) for m, v in cash_outflow_totals.items()}
+    cash_net_operating = {m: round(v / 1_000_000, 2) for m, v in cash_net_operating.items()}
+    
+    # Update per-item outflows to millions
+    for item in cash_outflow_items_list:
+        item['monthly'] = {m: round(v / 1_000_000, 2) for m, v in item['monthly'].items()}
+        item['total'] = round(item['total'] / 1_000_000, 2)
+    
+    total_cash_rec = round(sum(cash_recurring.values()), 2)
+    total_cash_one = round(sum(cash_one_time.values()), 2)
+    total_cash_gross = round(sum(cash_gross.values()), 2)
+    total_cash_outflow = round(sum(cash_outflow_totals.values()), 2)
+    total_cash_net = round(sum(cash_net_operating.values()), 2)
 
     # -------- CAPEX (refined: per-combination recognition & cash shifting) --------
     capex_rate_map: Dict[str, Dict[str, Dict[str,float]]] = {}
@@ -1519,15 +2001,16 @@ def _revenue_calc_core(payload: RevenueCalcPayload) -> RevenueCalcResponse:
         capex_override_map[item_name] = {m: float(months_obj.get(m,0) or 0) for m in months}
     capex_items_recognized: List[Dict[str, Any]] = []
     capex_combo_recog: Dict[str, Dict[str, Dict[str,float]]] = {}
+    inventory_groups = {'First Time Inventory', 'Replacement Inventory'}
     for item in getattr(payload, 'capex_items', []) or []:
         iname = item.get('name')
         if not iname:
             continue
         igroup = item.get('group') or ''
         itype = item.get('type') or 'first_time'
-        recog_off_item = int(item.get('recognition_offset_months') or 0)
         cf_off_item = int(item.get('cashflow_offset_months') or 0)
         is_refund = bool(item.get('is_refund')) or (itype == 'deposit_refund')
+        is_advance_procurement = igroup in inventory_groups
         override_months = capex_override_map.get(iname)
         monthly_recog_total = {m:0.0 for m in months}
         for combo in payload.volumes:
@@ -1541,8 +2024,8 @@ def _revenue_calc_core(payload: RevenueCalcPayload) -> RevenueCalcResponse:
             for v in raw_vols:
                 run_v += v
                 cum_raw.append(run_v)
-            combo_recog_off = int(getattr(combo, 'capex_offset_months', 0) or 0)
-            eff_recog_off = combo_recog_off + recog_off_item
+            # Recognition combo offset disabled (P&L CAPEX recognition deprecated, using cashflow only)
+            eff_recog_off = 0
             rates_obj = capex_rate_map.get(iname, {}).get(key, {'existing_rate':0.0,'fresh_rate':0.0})
             existing_rate = rates_obj['existing_rate']
             fresh_rate = rates_obj['fresh_rate']
@@ -1557,11 +2040,18 @@ def _revenue_calc_core(payload: RevenueCalcPayload) -> RevenueCalcResponse:
                 existing_part = 0.0
                 if itype == 'replacement':
                     existing_part = (override_months.get(m,0.0) if override_months is not None else (E * existing_rate))
+                
+                # For inventory items, apply advance offset to volume lookup
+                # For service items, use current month volume
+                vol_offset = cf_off_item if is_advance_procurement else 0
+                lookup_idx = midx + vol_offset if is_advance_procurement else midx
+                
                 # Safe offset logic: only access if index is valid
-                if midx >= eff_recog_off and len(cum_raw) > (midx - eff_recog_off):
-                    eff_cum = cum_raw[midx - eff_recog_off]
+                if lookup_idx >= 0 and lookup_idx < len(cum_raw):
+                    eff_cum = cum_raw[lookup_idx]
                 else:
                     eff_cum = 0.0
+                
                 fresh_part = 0.0
                 if itype in ('first_time','replacement','people'):
                     fresh_part = eff_cum * fresh_rate
@@ -1573,19 +2063,21 @@ def _revenue_calc_core(payload: RevenueCalcPayload) -> RevenueCalcResponse:
             'name': iname,
             'group': igroup,
             'type': itype,
-            'recognition_offset_months': recog_off_item,
             'cashflow_offset_months': cf_off_item,
             'is_refund': is_refund,
             'monthly': monthly_recog_total,
             'total': round(sum(monthly_recog_total.values()), DECIMALS)
         })
-    # Cash shift using combo + item offsets
+    # Cash shift for service items only (inventory items already have offset applied at recognition)
+    inventory_groups = {'First Time Inventory', 'Replacement Inventory'}
     capex_cash_map: Dict[str, Dict[str,float]] = {}
     for item in getattr(payload, 'capex_items', []) or []:
         iname = item.get('name')
         if not iname:
             continue
+        igroup = item.get('group') or ''
         item_cf_off = int(item.get('cashflow_offset_months') or 0)
+        is_advance_procurement = igroup in inventory_groups
         item_cash_months = {m:0.0 for m in months}
         combo_map = capex_combo_recog.get(iname, {})
         for combo in payload.volumes:
@@ -1597,12 +2089,18 @@ def _revenue_calc_core(payload: RevenueCalcPayload) -> RevenueCalcResponse:
             month_vals = combo_map.get(key)
             if not month_vals:
                 continue
-            for midx, m in enumerate(months):
-                target_idx = midx + cf_off
-                if target_idx >= len(months):
-                    continue
-                tm = months[target_idx]
-                item_cash_months[tm] += round(month_vals[m], DECIMALS)
+            # For inventory items: offset already applied at recognition, copy directly
+            # For service items: apply delay offset (pay AFTER transaction)
+            if is_advance_procurement:
+                for m in months:
+                    item_cash_months[m] += round(month_vals[m], DECIMALS)
+            else:
+                for midx, m in enumerate(months):
+                    target_idx = midx + cf_off
+                    if target_idx >= len(months):
+                        continue
+                    tm = months[target_idx]
+                    item_cash_months[tm] += round(month_vals[m], DECIMALS)
         capex_cash_map[iname] = item_cash_months
     # Group CAPEX cashflow by group header
     group_headers = [
@@ -1651,7 +2149,11 @@ def _revenue_calc_core(payload: RevenueCalcPayload) -> RevenueCalcResponse:
         monthly_totals=monthly_totals,
         monthly_recurring_totals=monthly_recurring_totals,
         monthly_one_time_totals=monthly_one_time_totals,
+        monthly_passthrough_revenue=monthly_passthrough_revenue,
+        monthly_passthrough_expense=monthly_passthrough_expense,
         total_revenue=grand_total,
+        total_passthrough_revenue=total_passthrough_revenue,
+        total_passthrough_expense=total_passthrough_expense,
         opex_items=opex_items_results,
         monthly_opex_totals=monthly_opex_totals,
         total_opex=total_opex,
@@ -1687,6 +2189,7 @@ LOB_HANDLERS = {
     'SDU': _handler_sdu,
     'OHFC': _handler_ohfc,
     'Dark Fiber': _handler_dark_fiber,
+    'Co Build': _handler_co_build,
 }
 
 

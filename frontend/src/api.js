@@ -116,3 +116,36 @@ export async function loadLobData(lob) {
   }
   return data;
 }
+// Download OPEX rates template
+export async function downloadOpexRatesTemplate(payload) {
+  const r = await fetchJson('/api/opex/rates-template', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload)
+  });
+  if (!r.ok) throw new Error('Failed to download OPEX rates template');
+  const blob = await r.blob();
+  const url = window.URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'opex_rates_template.csv';
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  window.URL.revokeObjectURL(url);
+}
+
+// Upload OPEX rates
+export async function uploadOpexRates(file) {
+  const formData = new FormData();
+  formData.append('file', file);
+  const r = await fetchJson('/api/opex/rates-upload', {
+    method: 'POST',
+    body: formData
+  });
+  if (!r.ok) {
+    const err = await r.json();
+    throw new Error(err.detail || 'Failed to upload OPEX rates');
+  }
+  return await r.json();
+}

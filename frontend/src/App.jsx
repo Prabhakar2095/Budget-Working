@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { fetchHealth, saveLob, loadLobData, calculateRevenue } from './api';
+import { fetchHealth, saveLob, loadLobData, calculateRevenue, downloadOpexRatesTemplate as downloadOpexRatesTemplateApi, uploadOpexRates as uploadOpexRatesApi } from './api';
 import OpexItems from './OpexItems';
 
 const FISCAL_MONTHS = ["Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec","Jan","Feb","Mar"];
@@ -20,7 +20,7 @@ function VolumeDesignFlow() {
   const [fiscalYear, setFiscalYear] = useState(null);
   const [priorYears, setPriorYears] = useState([]);
   // LOB selection (Option A: only FTTH implemented; others Coming Soon)
-  const LOBS = ['FTTH','Small Cell','SDU','Dark Fiber','OHFC','Active'];
+  const LOBS = ['FTTH','Small Cell','SDU','Dark Fiber','OHFC','Active','Co Build'];
   const [lob, setLob] = useState('');
 
   // Dimension data (editable anytime after FY set)
@@ -37,14 +37,23 @@ function VolumeDesignFlow() {
   const [newLevelValue, setNewLevelValue] = useState('');
 
   // Generated combinations
-  const [combos, setCombos] = useState([]); // {dimensions:{customer, circle, type, ...extra}, included, volumes, exit_volumes, fresh_offset_months, cashflow_offset_months}
+  const [combos, setCombos] = useState([]); // {dimensions:{customer, circle, type, ...extra}, included, volumes, exit_volumes, recurring_offset_months, one_time_offset_months, cashflow_offset_months}
   const [dimensionDirty, setDimensionDirty] = useState(false); // indicates lists changed after combos generated
   const [lastDimSignature, setLastDimSignature] = useState('');
   const [combosCollapsed, setCombosCollapsed] = useState(false);
 
   const initMonths = Object.fromEntries(FISCAL_MONTHS.map(m=>[m,0]));
 
+  // Keep the Combination column pinned while component columns scroll horizontally
+  const stickyComboHeaderStyle = { position:'sticky', left:0, zIndex:3, background:'#f5f7fb', whiteSpace:'nowrap' };
+  const stickyComboCellStyle = { position:'sticky', left:0, zIndex:2, background:'#fff', whiteSpace:'nowrap' };
+
   // Helpers
+  const formatMillion = (val) => {
+    const num = Number(val) / 1000000;
+    return num.toFixed(2);
+  };
+  
   const lockFiscalYear = () => {
     const fy = fiscalYearInput.trim();
     if(!/^FY\d{2}-\d{2}$/.test(fy)) return;
@@ -246,7 +255,7 @@ function VolumeDesignFlow() {
     const comboObjs = expanded.map(dimMap => {
       const key = comboKey(dimMap);
       if(oldMap.has(key)) { return { ...oldMap.get(key) }; }
-      return { dimensions: dimMap, included: true, volumes:{}, exit_volumes:{}, fresh_offset_months:0, cashflow_offset_months:0, capex_offset_months:0, capex_cashflow_offset_months:0 };
+      return { dimensions: dimMap, included: true, volumes:{}, exit_volumes:{}, fresh_offset_months:0, recurring_offset_months:0, one_time_offset_months:0, cashflow_offset_months:0, cashflow_recurring_offset_months:null, cashflow_one_time_offset_months:null, capex_cashflow_offset_months:0 };
     });
     setCombos(comboObjs);
     setDimensionDirty(false);
@@ -405,11 +414,12 @@ function VolumeDesignFlow() {
       setCombos(list => list.map(c => {
         const matches = data.rows.filter(r => r.dimensions.Customer === c.dimensions.customer && r.dimensions.Circle === c.dimensions.circle && r.dimensions.Type === c.dimensions.type);
         if(!matches.length) return c;
-        let updated = { ...c, exit_volumes: { ...c.exit_volumes }, existing_revenue: { ...(c.existing_revenue||{}) } };
+        let updated = { ...c, exit_volumes: { ...c.exit_volumes }, existing_revenue: { ...(c.existing_revenue||{}) }, existing_cashflow: { ...(c.existing_cashflow||{}) } };
         matches.forEach(r => {
           const fy = r.fiscal_year;
             updated.exit_volumes[fy] = (updated.exit_volumes[fy]||0) + r.exit_volume; // sum in case of multiple uploads
             updated.existing_revenue[fy] = { recurring: r.recurring, one_time: r.one_time };
+            updated.existing_cashflow[fy] = { recurring: r.cf_recurring, one_time: r.cf_one_time };
         });
         return updated;
       }));
@@ -448,6 +458,56 @@ function VolumeDesignFlow() {
     } finally { e.target.value=''; }
   };
 
+  const downloadOpexRatesTemplate = async () => {
+    try {
+      const included = combos.filter(c=> c.included!==false);
+      const payload = {
+        volumes: included.map(c=> ({ dimensions: c.dimensions })),
+        opex_items: opexItems
+      };
+      await downloadOpexRatesTemplateApi(payload);
+    } catch(err) {
+      alert('Error downloading template: ' + err.message);
+    }
+  };
+
+  const handleOpexRatesUpload = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    try {
+      const result = await uploadOpexRatesApi(file);
+      const newRates = {};
+      const ratesData = result.rates || {};
+      
+      // Build a map of combo display names to keys for lookup
+      const comboNameMap = {};
+      combos.forEach(c=> {
+        // Use same order as backend: just iterate dimensions keys as-is
+        const displayName = Object.values(c.dimensions).join(' / ');
+        const key = Object.values(c.dimensions).join('|');
+        comboNameMap[displayName] = key;
+      });
+      
+      for (const itemName in ratesData) {
+        for (const comboStr in ratesData[itemName]) {
+          const key = comboNameMap[comboStr];
+          if (key) {
+            const existingRate = parseFloat(ratesData[itemName][comboStr].existing_rate) || 0;
+            const freshRate = parseFloat(ratesData[itemName][comboStr].fresh_rate) || 0;
+            newRates[key] = newRates[key] || {};
+            newRates[key][itemName] = { existing_rate: existingRate, fresh_rate: freshRate };
+          }
+        }
+      }
+      
+      setOpexRates(prev=> ({ ...prev, ...newRates }));
+      alert(`Successfully imported ${result.rows_processed} rows of OPEX rates`);
+    } catch(err) {
+      console.error('Upload error:', err);
+      alert('Error uploading rates: ' + err.message);
+    } finally { e.target.value=''; }
+  };
+
   const runRevenueCalc = async () => {
   setLoading(true); setError(null); setRevenueResult(null);
         try {
@@ -459,11 +519,15 @@ function VolumeDesignFlow() {
             volumes: c.volumes,
             exit_volumes: c.exit_volumes,
             existing_revenue: c.existing_revenue || {},
+            existing_cashflow: c.existing_cashflow || {},
             included:true,
             // Ensure offsets are numeric (coerce strings like '02' -> 2)
             fresh_offset_months: Number(c.fresh_offset_months) || 0,
+            recurring_offset_months: Number(c.recurring_offset_months) || 0,
+            one_time_offset_months: Number(c.one_time_offset_months) || 0,
             cashflow_offset_months: Number(c.cashflow_offset_months) || 0,
-            capex_offset_months: Number(c.capex_offset_months) || 0,
+            cashflow_recurring_offset_months: c.cashflow_recurring_offset_months === null || c.cashflow_recurring_offset_months === undefined ? null : Number(c.cashflow_recurring_offset_months) || 0,
+            cashflow_one_time_offset_months: c.cashflow_one_time_offset_months === null || c.cashflow_one_time_offset_months === undefined ? null : Number(c.cashflow_one_time_offset_months) || 0,
             capex_cashflow_offset_months: Number(c.capex_cashflow_offset_months) || 0
           }));
           const ratePayload = included.map(c=> {
@@ -498,7 +562,7 @@ function VolumeDesignFlow() {
           if(existingOpexOverridesArr.length) body.existing_opex_overrides = existingOpexOverridesArr;
           if(existingCapexOverridesArr.length) body.existing_capex_overrides = existingCapexOverridesArr;
           console.log('Revenue calculation payload:', body);
-          console.log('Volume payload offsets:', volumePayload.map(v => ({ dims: v.dimensions, fresh_offset: v.fresh_offset_months })));
+          console.log('Volume payload offsets:', volumePayload.map(v => ({ dims: v.dimensions, recurring_offset: v.recurring_offset_months, one_time_offset: v.one_time_offset_months })));
           const resp = await fetch('/api/revenue/calculate', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)});
           if(!resp.ok) {
             let errorMsg = 'Revenue API error';
@@ -697,9 +761,10 @@ function VolumeDesignFlow() {
               <thead>
                 <tr>
                   <th>Combination</th>
-                  <th>P&L Offset (m)</th>
-                  <th>CF Offset (m)</th>
-                  <th>Capex Recog Offset (m)</th>
+                  <th>Recurring Offset (m)</th>
+                  <th>One-Time Offset (m)</th>
+                  <th>CF Rec Offset (m)</th>
+                  <th>CF OT Offset (m)</th>
                   <th>Capex CF Offset (m)</th>
                   {FISCAL_MONTHS.map(m=> <th key={m}>{m}</th>)}
                 </tr>
@@ -710,9 +775,10 @@ function VolumeDesignFlow() {
                   return (
                     <tr key={i}>
                       <td style={{whiteSpace:'nowrap'}}>{Object.values(c.dimensions).join(' / ')}</td>
-                      <td><input title='P&L recognition offset from fresh volume month (was Fresh Offset)' type="number" min={0} style={{width:70}} value={c.fresh_offset_months||0} onChange={e=> setCombos(list=> list.map((cc,ii)=> ii===i? {...cc, fresh_offset_months: Number(e.target.value)||0}: cc))} /></td>
-                      <td><input title='Cashflow (CF) timing offset applied to inflow & outflow from this combination' type="number" min={0} style={{width:70}} value={c.cashflow_offset_months||0} onChange={e=> setCombos(list=> list.map((cc,ii)=> ii===i? {...cc, cashflow_offset_months: Number(e.target.value)||0}: cc))} /></td>
-                      <td><input title='CAPEX recognition offset applied to cumulative fresh volume basis for CAPEX items' type='number' min={0} style={{width:70}} value={c.capex_offset_months||0} onChange={e=> setCombos(list=> list.map((cc,ii)=> ii===i? {...cc, capex_offset_months: Number(e.target.value)||0}: cc))} /></td>
+                      <td><input title='P&L recognition offset for recurring revenue (months)' type="number" min={0} style={{width:70}} value={c.recurring_offset_months||0} onChange={e=> setCombos(list=> list.map((cc,ii)=> ii===i? {...cc, recurring_offset_months: Number(e.target.value)||0}: cc))} /></td>
+                      <td><input title='P&L recognition offset for one-time revenue (months)' type="number" min={0} style={{width:70}} value={c.one_time_offset_months||0} onChange={e=> setCombos(list=> list.map((cc,ii)=> ii===i? {...cc, one_time_offset_months: Number(e.target.value)||0}: cc))} /></td>
+                      <td><input title='Cashflow offset for recurring inflow (months)' type="number" min={0} style={{width:70}} value={c.cashflow_recurring_offset_months ?? ''} onChange={e=> setCombos(list=> list.map((cc,ii)=> ii===i? {...cc, cashflow_recurring_offset_months: e.target.value===''? null : Number(e.target.value)||0}: cc))} /></td>
+                      <td><input title='Cashflow offset for one-time inflow (months)' type="number" min={0} style={{width:70}} value={c.cashflow_one_time_offset_months ?? ''} onChange={e=> setCombos(list=> list.map((cc,ii)=> ii===i? {...cc, cashflow_one_time_offset_months: e.target.value===''? null : Number(e.target.value)||0}: cc))} /></td>
                       <td><input title='CAPEX cashflow offset added to per-item CAPEX CF offsets' type='number' min={0} style={{width:70}} value={c.capex_cashflow_offset_months||0} onChange={e=> setCombos(list=> list.map((cc,ii)=> ii===i? {...cc, capex_cashflow_offset_months: Number(e.target.value)||0}: cc))} /></td>
                       {FISCAL_MONTHS.map(m=> {
                         const v = (c.volumes[fiscalYear]||{})[m]||0; return (
@@ -857,6 +923,13 @@ function VolumeDesignFlow() {
             {opexItems.length>0 && (
               <div style={{marginTop:32}}>
                 <h4>Opex Rates (Transposed View)</h4>
+                <div style={{marginBottom:16, display:'flex', gap:12}}>
+                  <button onClick={()=> downloadOpexRatesTemplate()}>Download Rates Template</button>
+                  <label style={{display:'flex', alignItems:'center', gap:8}}>
+                    <span>Upload Rates:</span>
+                    <input type='file' accept='.csv,.xlsx,.xls' onChange={e=> handleOpexRatesUpload(e)} />
+                  </label>
+                </div>
                 {/* Existing Rates: rows = combinations, columns = items (no offsets here) */}
                 <div style={{overflowX:'auto', marginBottom:28}}>
                   <table border={1} cellPadding={4} style={{borderCollapse:'collapse', minWidth:'70%'}}>
@@ -990,17 +1063,21 @@ function VolumeDesignFlow() {
                 else if(group==='Capex People') type='people';
                 else if(group==='Deposit Refund') type='deposit_refund';
                 const is_refund = group==='Deposit Refund';
-                setCapexItems(list=> [...list, {name, group, type, is_refund, recognition_offset_months:0, cashflow_offset_months:0}]);
+                setCapexItems(list=> [...list, {name, group, type, is_refund, cashflow_offset_months:0}]);
                 setNewCapexName('');
               }}>Add CAPEX</button>
             </div>
           </div>
           {capexItems.length>0 && (
             <div style={{marginTop:18, overflowX:'auto'}}>
+              <div style={{fontSize:11, marginBottom:8, color:'#666'}}>
+                <b>CF Offset:</b> For Inventory items (Battery, Pole, Fiber, Antenna, Others), offset is <b>advance months</b> (procure BEFORE volume). 
+                For other items (Services, People, Deposits), offset is <b>delay months</b> (pay AFTER transaction).
+              </div>
               <table border={1} cellPadding={4} style={{borderCollapse:'collapse', minWidth:'70%'}}>
                 <thead>
                   <tr>
-                    <th>Item</th><th>Group</th><th>Type</th><th>Recog Offset (m)</th><th>CF Offset (m)</th><th>Refund?</th><th>Remove</th>
+                    <th>Item</th><th>Group</th><th>Type</th><th>CF Offset (m)</th><th>Refund?</th><th>Remove</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -1009,7 +1086,6 @@ function VolumeDesignFlow() {
                       <td>{it.name}</td>
                       <td>{it.group}</td>
                       <td>{it.type}</td>
-                      <td><input type='number' min={0} style={{width:70}} value={it.recognition_offset_months||0} onChange={e=> setCapexItems(list=> list.map((o,j)=> j===i? {...o, recognition_offset_months:Number(e.target.value)||0}: o))} /></td>
                       <td><input type='number' min={0} style={{width:70}} value={it.cashflow_offset_months||0} onChange={e=> setCapexItems(list=> list.map((o,j)=> j===i? {...o, cashflow_offset_months:Number(e.target.value)||0}: o))} /></td>
                       <td style={{textAlign:'center'}}>
                         <input type='checkbox' checked={!!it.is_refund} onChange={e=> setCapexItems(list=> list.map((o,j)=> j===i? {...o, is_refund: e.target.checked}: o))} />
@@ -1027,11 +1103,11 @@ function VolumeDesignFlow() {
                 <>
                   <h4>CAPEX Rates (Existing)</h4>
                   <div style={{fontSize:11, marginBottom:6}}>Shown only because at least one Replacement item exists. Non-replacement columns disabled.</div>
-                  <div style={{overflowX:'auto', marginBottom:22}}>
+                  <div style={{overflowX:'auto', marginBottom:22, position:'relative'}}>
                     <table border={1} cellPadding={4} style={{borderCollapse:'collapse', minWidth:'70%'}}>
                       <thead>
                         <tr>
-                          <th>Combination</th>
+                          <th style={stickyComboHeaderStyle}>Combination</th>
                           {capexItems.map(it=> (
                             <th key={'cex-h-'+it.name} style={{whiteSpace:'nowrap'}}>{it.name}</th>
                           ))}
@@ -1043,7 +1119,7 @@ function VolumeDesignFlow() {
                           const label = Object.values(c.dimensions).join(' / ');
                           return (
                             <tr key={'cex-row-'+ci}>
-                              <td style={{whiteSpace:'nowrap'}}>{label}</td>
+                              <td style={stickyComboCellStyle}>{label}</td>
                               {capexItems.map(it=> {
                                 const itemRates = (capexRates[key] && capexRates[key][it.name]) || {existing_rate:0,fresh_rate:0};
                                 // Only disable for non-replacement items except ROW Deposit and Deposit Refund
@@ -1064,11 +1140,11 @@ function VolumeDesignFlow() {
                 </>
               )}
               <h4>CAPEX Rates (Fresh)</h4>
-              <div style={{overflowX:'auto'}}>
+              <div style={{overflowX:'auto', position:'relative'}}>
                 <table border={1} cellPadding={4} style={{borderCollapse:'collapse', minWidth:'70%'}}>
                   <thead>
                     <tr>
-                      <th>Combination</th>
+                      <th style={stickyComboHeaderStyle}>Combination</th>
                       {capexItems.map(it=> (
                         <th key={'cfr-h-'+it.name} style={{whiteSpace:'nowrap'}}>{it.name}</th>
                       ))}
@@ -1080,7 +1156,7 @@ function VolumeDesignFlow() {
                       const label = Object.values(c.dimensions).join(' / ');
                       return (
                         <tr key={'cfr-row-'+ci}>
-                          <td style={{whiteSpace:'nowrap'}}>{label}</td>
+                          <td style={stickyComboCellStyle}>{label}</td>
                           {capexItems.map(it=> {
                             const itemRates = (capexRates[key] && capexRates[key][it.name]) || {existing_rate:0,fresh_rate:0};
                             // Make ROW Deposit and Deposit Refund editable
@@ -1122,6 +1198,7 @@ function VolumeDesignFlow() {
               {(() => { if(!window.__fmt2) window.__fmt2 = (v)=> (v==null? '0.00': Number(v).toFixed(2)); })()}
               {/* Table 1: Per Combination Monthly Total Revenue (months as columns) */}
               <div style={{overflowX:'auto'}}>
+                <h4>Revenue by Combination (₹ in Millions)</h4>
                 <table border={1} cellPadding={4} style={{borderCollapse:'collapse', marginBottom:24}}>
                   <thead>
                     <tr>
@@ -1134,22 +1211,22 @@ function VolumeDesignFlow() {
                     {revenueResult.rows.map((r,i)=> (
                       <tr key={i}>
                         <td>{Object.values(r.dimensions).join(' / ')}</td>
-                        {FISCAL_MONTHS.map(m=> <td className='num-cell' key={m}>{Number((r.monthly_revenue||{})[m]||0).toFixed(2)}</td>)}
-                        <td className='num-cell'>{Number(r.total_revenue).toFixed(2)}</td>
+                        {FISCAL_MONTHS.map(m=> <td className='num-cell' key={m}>{formatMillion((r.monthly_revenue||{})[m]||0)}</td>)}
+                        <td className='num-cell'>{formatMillion(r.total_revenue)}</td>
                       </tr>
                     ))}
                   </tbody>
                   <tfoot>
                     <tr>
                       <td><b>Totals</b></td>
-                      {FISCAL_MONTHS.map(m=> <td className='num-cell' key={m}>{Number(revenueResult.monthly_totals[m]).toFixed(2)}</td>)}
-                      <td className='num-cell'><b>{Number(revenueResult.total_revenue).toFixed(2)}</b></td>
+                      {FISCAL_MONTHS.map(m=> <td className='num-cell' key={m}>{formatMillion(revenueResult.monthly_totals[m])}</td>)}
+                      <td className='num-cell'><b>{formatMillion(revenueResult.total_revenue)}</b></td>
                     </tr>
                   </tfoot>
                 </table>
               </div>
               {/* Table 2: Monthly Summary (months as rows) */}
-              <h4>Monthly Summary</h4>
+              <h4>Monthly Summary (₹ in Millions)</h4>
               <table border={1} cellPadding={4} style={{borderCollapse:'collapse'}}>
                 <thead>
                   <tr>
@@ -1163,24 +1240,24 @@ function VolumeDesignFlow() {
                   {FISCAL_MONTHS.map(m=> (
                     <tr key={m}>
                       <td>{m}</td>
-                      <td className='num-cell'>{Number(revenueResult.monthly_one_time_totals[m]).toFixed(2)}</td>
-                      <td className='num-cell'>{Number(revenueResult.monthly_recurring_totals[m]).toFixed(2)}</td>
-                      <td className='num-cell'>{Number(revenueResult.monthly_totals[m]).toFixed(2)}</td>
+                      <td className='num-cell'>{formatMillion(revenueResult.monthly_one_time_totals[m])}</td>
+                      <td className='num-cell'>{formatMillion(revenueResult.monthly_recurring_totals[m])}</td>
+                      <td className='num-cell'>{formatMillion(revenueResult.monthly_totals[m])}</td>
                     </tr>
                   ))}
                 </tbody>
                 <tfoot>
                   <tr>
                     <td><b>{fiscalYear || 'Year Total'}</b></td>
-                    <td className='num-cell'>{Object.values(revenueResult.monthly_one_time_totals).reduce((a,b)=> a+b,0).toFixed(2)}</td>
-                    <td className='num-cell'>{Object.values(revenueResult.monthly_recurring_totals).reduce((a,b)=> a+b,0).toFixed(2)}</td>
-                    <td className='num-cell'>{Number(revenueResult.total_revenue).toFixed(2)}</td>
+                    <td className='num-cell'>{formatMillion(Object.values(revenueResult.monthly_one_time_totals).reduce((a,b)=> a+b,0))}</td>
+                    <td className='num-cell'>{formatMillion(Object.values(revenueResult.monthly_recurring_totals).reduce((a,b)=> a+b,0))}</td>
+                    <td className='num-cell'>{formatMillion(revenueResult.total_revenue)}</td>
                   </tr>
                 </tfoot>
               </table>
               {/* Opex summary */}
               <div style={{marginTop:40}}>
-                <h3>Opex Summary</h3>
+                <h3>Opex Summary (₹ in Millions)</h3>
                 {revenueResult.opex_items && revenueResult.opex_items.length>0 ? (
                   <div style={{overflowX:'auto'}}>
                     <table border={1} cellPadding={4} style={{borderCollapse:'collapse'}}>
@@ -1195,16 +1272,16 @@ function VolumeDesignFlow() {
                         {revenueResult.opex_items.map((it,i)=>(
                           <tr key={i}>
                             <td>{it.name}</td>
-                            {FISCAL_MONTHS.map(m=> <td className='num-cell' key={m}>{Number(it.monthly[m]||0).toFixed(2)}</td>)}
-                            <td className='num-cell'>{Number(it.total||0).toFixed(2)}</td>
+                            {FISCAL_MONTHS.map(m=> <td className='num-cell' key={m}>{formatMillion(it.monthly[m]||0)}</td>)}
+                            <td className='num-cell'>{formatMillion(it.total||0)}</td>
                           </tr>
                         ))}
                       </tbody>
                       <tfoot>
                         <tr>
                           <td><b>Total Opex</b></td>
-                          {FISCAL_MONTHS.map(m=> <td className='num-cell' key={m}>{Number((revenueResult.monthly_opex_totals||{})[m]||0).toFixed(2)}</td>)}
-                          <td className='num-cell'><b>{Number(revenueResult.total_opex||0).toFixed(2)}</b></td>
+                          {FISCAL_MONTHS.map(m=> <td className='num-cell' key={m}>{formatMillion((revenueResult.monthly_opex_totals||{})[m]||0)}</td>)}
+                          <td className='num-cell'><b>{formatMillion(revenueResult.total_opex||0)}</b></td>
                         </tr>
                       </tfoot>
                     </table>
@@ -1331,8 +1408,9 @@ function VolumeDesignFlow() {
                   const cashOne = revenueResult.monthly_cash_one_time_inflow || {};
                   const cashPass = revenueResult.monthly_cash_passthrough_inflow || {};
                   const cashGross = revenueResult.monthly_cash_gross_inflow || {};
-                  // Provision & penalty timing: same as P&L (unshifted) => base on P&L monthly totals & net revenue logic
-                  const plGross = revenueResult.monthly_totals || {}; // unshifted gross revenue
+                  // Provision & penalty timing: align units by converting P&L gross to millions to match cashflow fields
+                  const plGrossRaw = revenueResult.monthly_totals || {}; // unshifted gross revenue (₹)
+                  const plGross = {}; months.forEach(m => { plGross[m] = (plGrossRaw[m] || 0) / 1_000_000; });
                   const prov = {}; const netInflow = {}; // net after provision
                   months.forEach(m=> { const base = Math.max(plGross[m]||0,0); prov[m] = base * (provisionPct/100); netInflow[m] = (cashGross[m]||0) - prov[m]; });
                   // Outflows (shifted per item)
@@ -1342,7 +1420,11 @@ function VolumeDesignFlow() {
                   // Penalties base: P&L net revenue (unshifted net after provision) computed from plGross - prov
                   const penaltyBase = {}; months.forEach(m=> { const base = Math.max((plGross[m]||0) - prov[m], 0); penaltyBase[m] = base; });
                   const custPen = {}; const vendPen = {}; const totPen = {}; const netOpPost = {}; months.forEach(m=> { const b = penaltyBase[m]; custPen[m] = b * (customerPenaltyPct/100); vendPen[m] = b * (vendorPenaltyPct/100); totPen[m] = custPen[m] + vendPen[m]; netOpPost[m] = netOperating[m] - totPen[m]; });
-                  const SCALE = 1_000_000; const fmt = (v, d=1)=> (Number(v||0)/SCALE).toFixed(d); const fmtParens = (v,d=1)=> { const n=Number(v||0); return n<0? `(${Math.abs(n)/SCALE.toFixed? (Math.abs(n)/SCALE).toFixed(d):fmt(Math.abs(n),d)})`: (Math.abs(n)/SCALE).toFixed(d); };
+                  const fmt = (v, d=1)=> Number(v||0).toFixed(d);
+                  const fmtParens = (v,d=1)=> {
+                    const n = Number(v||0);
+                    return n<0 ? `(${Math.abs(n).toFixed(d)})` : n.toFixed(d);
+                  };
                   const sum = (obj)=> months.reduce((a,m)=> a + (obj[m]||0),0);
                   return (
                     <div style={{overflowX:'auto'}}>
@@ -1388,7 +1470,7 @@ function VolumeDesignFlow() {
       )}
       {revenueResult && revenueResult.capex_items && revenueResult.capex_items.length>0 && (
         <div style={{marginTop:50}}>
-          <h3>CAPEX Summary (Recognition)</h3>
+          <h3>CAPEX Summary (Recognition) (₹ in Millions)</h3>
           <div style={{overflowX:'auto'}}>
             <table border={1} cellPadding={4} style={{borderCollapse:'collapse'}}>
               <thead>
@@ -1402,14 +1484,14 @@ function VolumeDesignFlow() {
                 {revenueResult.capex_items.map((it,i)=>(
                   <tr key={'cx-'+i}>
                     <td>{it.name}</td>
-                    {FISCAL_MONTHS.map(m=> <td key={m} style={{textAlign:'right'}}>{Number(it.monthly[m]||0).toFixed(2)}</td>)}
-                    <td style={{textAlign:'right'}}>{Number(it.total||0).toFixed(2)}</td>
+                    {FISCAL_MONTHS.map(m=> <td key={m} style={{textAlign:'right'}}>{formatMillion(it.monthly[m]||0)}</td>)}
+                    <td style={{textAlign:'right'}}>{formatMillion(it.total||0)}</td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
-          <h4 style={{marginTop:30}}>CAPEX Cash (After Offsets) & Net Funding</h4>
+          <h4 style={{marginTop:30}}>CAPEX Cash (After Offsets) & Net Funding (₹ in Millions)</h4>
           {(() => {
             const months = FISCAL_MONTHS;
             const netOp = revenueResult.monthly_cash_net_operating || {};
@@ -1454,13 +1536,13 @@ function VolumeDesignFlow() {
                     </tr>
                   </thead>
                   <tbody>
-                    <tr><td>Net Operating Flow</td>{months.map(m=> <td key={m} style={{textAlign:'right'}}>{(netOp[m]||0).toFixed(2)}</td>)}<td style={{textAlign:'right'}}>{sum(netOp).toFixed(2)}</td></tr>
+                    <tr><td>Net Operating Flow</td>{months.map(m=> <td key={m} style={{textAlign:'right'}}>{formatMillion(netOp[m]||0)}</td>)}<td style={{textAlign:'right'}}>{formatMillion(sum(netOp))}</td></tr>
                     {groupHeaders.map(group => (
-                      <tr key={group}><td>{group}</td>{months.map(m=> <td key={m} style={{textAlign:'right'}}>{capexGroupMonthly[group][m].toFixed(2)}</td>)}<td style={{textAlign:'right'}}>{capexGroupMonthly[group].total.toFixed(2)}</td></tr>
+                      <tr key={group}><td>{group}</td>{months.map(m=> <td key={m} style={{textAlign:'right'}}>{formatMillion(capexGroupMonthly[group][m])}</td>)}<td style={{textAlign:'right'}}>{formatMillion(capexGroupMonthly[group].total)}</td></tr>
                     ))}
-                    <tr style={{background:'#e8ffe8'}}><td><b>Net Cashflow</b></td>{months.map(m=> <td key={m} style={{textAlign:'right'}}>{(netCash[m]||0).toFixed(2)}</td>)}<td style={{textAlign:'right'}}><b>{sum(netCash).toFixed(2)}</b></td></tr>
-                    <tr><td>Cumulative Net Cashflow</td>{months.map(m=> <td key={m} style={{textAlign:'right'}}>{(cumNet[m]||0).toFixed(2)}</td>)}<td style={{textAlign:'right'}}>{(cumNet[months[months.length-1]]||0).toFixed(2)}</td></tr>
-                    <tr style={{background:'#f5f5f5'}}><td><b>Peak Funding (Most Negative Cum)</b></td><td colSpan={months.length} style={{textAlign:'center'}}>{peakFunding.toFixed(2)}</td><td></td></tr>
+                    <tr style={{background:'#e8ffe8'}}><td><b>Net Cashflow</b></td>{months.map(m=> <td key={m} style={{textAlign:'right'}}>{formatMillion(netCash[m]||0)}</td>)}<td style={{textAlign:'right'}}><b>{formatMillion(sum(netCash))}</b></td></tr>
+                    <tr><td>Cumulative Net Cashflow</td>{months.map(m=> <td key={m} style={{textAlign:'right'}}>{formatMillion(cumNet[m]||0)}</td>)}<td style={{textAlign:'right'}}>{formatMillion(cumNet[months[months.length-1]]||0)}</td></tr>
+                    <tr style={{background:'#f5f5f5'}}><td><b>Peak Funding (Most Negative Cum)</b></td><td colSpan={months.length} style={{textAlign:'center'}}>{formatMillion(peakFunding)}</td><td></td></tr>
                   </tbody>
                 </table>
               </div>
@@ -1484,7 +1566,7 @@ export default function App() {
         <button onClick={async()=>{
           try{
             // Consolidated export for all known LOBs
-            const LOBS = ['FTTH','Small Cell','SDU','Dark Fiber','OHFC','Active'];
+            const LOBS = ['FTTH','Small Cell','SDU','Dark Fiber','OHFC','Active','Co Build'];
             // Build workbook
             if(!window.XLSX) { alert('XLSX library not loaded. Please ensure you have internet access to the CDN.'); return; }
             const wb = window.XLSX.utils.book_new();
@@ -1499,25 +1581,26 @@ export default function App() {
                 const rev = await calculateRevenue(lob, payload);
                 // Build a simple 2D array for P&L summary similar to UI table
                 const months = rev.months || ['Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec','Jan','Feb','Mar'];
-                const header = ['Line Item', ...months, rev.fiscal_year || 'Year Total'];
+                const header = ['Line Item (₹ in Millions)', ...months, rev.fiscal_year || 'Year Total'];
                 const rows = [];
-                // One-time, Recurring, Passthrough, Gross
-                rows.push(['One-time Revenue', ...months.map(m=> rev.monthly_one_time_totals?.[m] ?? 0), (Object.values(rev.monthly_one_time_totals||{}).reduce((a,b)=>a+b,0)).toFixed(2)]);
-                rows.push(['Recurring Revenue', ...months.map(m=> rev.monthly_recurring_totals?.[m] ?? 0), (Object.values(rev.monthly_recurring_totals||{}).reduce((a,b)=>a+b,0)).toFixed(2)]);
-                rows.push(['Passthrough Revenue', ...months.map(m=> rev.monthly_cash_passthrough_inflow?.[m] ?? 0), 0]);
-                rows.push(['Gross Revenue (Millions)', ...months.map(m=> rev.monthly_totals?.[m] ?? 0), rev.total_revenue ?? 0]);
+                const sumValues = (obj)=> months.reduce((a,m)=> a + (obj?.[m] ?? 0),0);
+                // One-time, Recurring, Passthrough, Gross (all in millions)
+                rows.push(['One-time Revenue', ...months.map(m=> ((rev.monthly_one_time_totals?.[m] ?? 0) / 1000000).toFixed(2)), (Object.values(rev.monthly_one_time_totals||{}).reduce((a,b)=>a+b,0) / 1000000).toFixed(2)]);
+                rows.push(['Recurring Revenue', ...months.map(m=> ((rev.monthly_recurring_totals?.[m] ?? 0) / 1000000).toFixed(2)), (Object.values(rev.monthly_recurring_totals||{}).reduce((a,b)=>a+b,0) / 1000000).toFixed(2)]);
+                rows.push(['Passthrough Revenue', ...months.map(m=> (rev.monthly_cash_passthrough_inflow?.[m] ?? 0).toFixed(2)), sumValues(rev.monthly_cash_passthrough_inflow).toFixed(2)]);
+                rows.push(['Gross Revenue', ...months.map(m=> ((rev.monthly_totals?.[m] ?? 0) / 1000000).toFixed(2)), ((rev.total_revenue ?? 0) / 1000000).toFixed(2)]);
                 // Opex items
                 rows.push([]);
                 rows.push(['Direct Opex']);
                 if(rev.opex_items && rev.opex_items.length){
                   for(const it of rev.opex_items){
-                    rows.push([it.name, ...months.map(m=> it.monthly?.[m] ?? 0), it.total ?? 0]);
+                    rows.push([it.name, ...months.map(m=> ((it.monthly?.[m] ?? 0) / 1000000).toFixed(2)), ((it.total ?? 0) / 1000000).toFixed(2)]);
                   }
                 }
                 // Totals and margins
                 rows.push([]);
-                rows.push(['Total Opex', ...months.map(m=> rev.monthly_opex_totals?.[m] ?? 0), rev.total_opex ?? 0]);
-                rows.push(['Operating Margin (Millions)', ...months.map(m=> rev.monthly_cash_net_operating?.[m] ?? 0), rev.total_cash_net_operating ?? 0]);
+                rows.push(['Total Opex', ...months.map(m=> ((rev.monthly_opex_totals?.[m] ?? 0) / 1000000).toFixed(2)), ((rev.total_opex ?? 0) / 1000000).toFixed(2)]);
+                rows.push(['Operating Margin', ...months.map(m=> (rev.monthly_cash_net_operating?.[m] ?? 0).toFixed(2)), (rev.total_cash_net_operating ?? sumValues(rev.monthly_cash_net_operating)).toFixed(2)]);
 
                 const ws = window.XLSX.utils.aoa_to_sheet([header, ...rows]);
                 window.XLSX.utils.book_append_sheet(wb, ws, lob.substring(0,31));
